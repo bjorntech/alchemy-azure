@@ -1,0 +1,13 @@
+node_modules/
+coverage/
+dist/
+.env
+.env.*
+.envrc
+*.tsbuildinfo
+.alchemy/
+*.tgz
+.opencode/.gitignore
+.opencode/node_modules/
+.opencode/package-lock.json
+.opencode/package.json

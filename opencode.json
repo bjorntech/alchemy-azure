@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "references": {
+    "alchemy-effect": {
+      "repository": "alchemy-run/alchemy-effect",
+      "branch": "main",
+      "description": "Use for upstream Alchemy v2 provider APIs, Resource/Provider.effect patterns, Platform behavior, and Effect integration details."
+    }
+  }
+}

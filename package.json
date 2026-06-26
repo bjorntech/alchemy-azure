@@ -1,0 +1,87 @@
+{
+  "name": "@bjorntech/alchemy-azure",
+  "version": "0.1.1-beta.57",
+  "description": "Microsoft Azure providers for Alchemy v2",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "keywords": [
+    "alchemy",
+    "alchemy-effect",
+    "azure",
+    "iac",
+    "infrastructure-as-code",
+    "effect",
+    "typescript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bjorntech/alchemy-azure.git"
+  },
+  "homepage": "https://github.com/bjorntech/alchemy-azure#readme",
+  "bugs": {
+    "url": "https://github.com/bjorntech/alchemy-azure/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "ARCHITECTURE.md",
+    "CHANGELOG.md",
+    "env.example",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "coverage": "bun test --coverage --coverage-reporter=lcov",
+    "coverage:check": "bun run scripts/coverage-floor.ts",
+    "crap": "bun run scripts/crap-index.ts",
+    "smoke:azure": "bun run scripts/azure-production-smoke.ts",
+    "smoke:azure:nuke": "bun run scripts/azure-smoke-nuke.ts",
+    "smoke:azure:negative": "bun run scripts/azure-negative-smoke.ts",
+    "test": "bun test",
+    "format": "oxfmt .",
+    "prepublishOnly": "bun run check && bun test && bun run coverage:check"
+  },
+  "dependencies": {
+    "@azure/arm-appcontainers": "^3.0.0",
+    "@azure/arm-appservice": "^17.0.0",
+    "@azure/arm-cognitiveservices": "^7.1.0",
+    "@azure/arm-compute": "^23.0.0",
+    "@azure/arm-containerinstance": "^9.1.0",
+    "@azure/arm-containerregistry": "^12.0.0",
+    "@azure/arm-cosmosdb": "^9.1.0",
+    "@azure/arm-keyvault": "^5.0.0",
+    "@azure/arm-msi": "^2.1.0",
+    "@azure/arm-network": "^34.0.0",
+    "@azure/arm-resources": "^6.1.0",
+    "@azure/arm-servicebus": "^6.1.0",
+    "@azure/arm-sql": "^10.0.0",
+    "@azure/arm-storage": "^18.5.0",
+    "@azure/identity": "^4.13.0",
+    "@azure/ms-rest-js": "^2.7.0",
+    "@azure/storage-blob": "^12.29.1"
+  },
+  "peerDependencies": {
+    "alchemy": "2.0.0-beta.57",
+    "effect": ">=4.0.0-beta.84 || >=4.0.0"
+  },
+  "devDependencies": {
+    "@effect/platform-bun": "4.0.0-beta.84",
+    "@effect/platform-node": "4.0.0-beta.84",
+    "@effect/platform-node-shared": "4.0.0-beta.84",
+    "@types/bun": "latest",
+    "alchemy": "2.0.0-beta.57",
+    "effect": "4.0.0-beta.84",
+    "oxfmt": "latest",
+    "typescript": "latest"
+  }
+}

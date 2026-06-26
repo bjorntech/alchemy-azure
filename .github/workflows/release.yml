@@ -1,0 +1,81 @@
+name: Release NPM Package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Upgrade npm for OIDC trusted publishing
+        run: |
+          npm install -g npm@latest
+          npm --version
+          sed -i '/always-auth/d' ~/.npmrc 2>/dev/null || true
+
+      - name: Run quality gates
+        run: |
+          bun run check
+          bun test
+          bun run coverage:check
+
+      - name: Publish to NPM
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          PKG_NAME=$(node -p "require('./package.json').name")
+          TAG_NAME="v${VERSION}"
+          echo "--- Publishing ${PKG_NAME}@${VERSION} ---"
+
+          if [[ "${VERSION}" == *-* ]]; then
+            TAG="next"
+          else
+            TAG="latest"
+          fi
+
+          TARBALL=$(npm pack --json | node -e "let data=''; process.stdin.on('data', c => data += c); process.stdin.on('end', () => process.stdout.write(JSON.parse(data)[0].filename));")
+
+          if npm view "${PKG_NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "${PKG_NAME}@${VERSION} already published, skipping npm publish"
+          else
+            echo "Publishing tarball: ${TARBALL} with tag ${TAG}"
+            npm publish "${TARBALL}" --access public --tag "${TAG}"
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Tag ${TAG_NAME} already exists"
+          else
+            git tag "${TAG_NAME}"
+            git push origin "${TAG_NAME}"
+          fi
+
+          if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Release ${TAG_NAME} already exists"
+          else
+            gh release create "${TAG_NAME}" "${TARBALL}" --title "${PKG_NAME}@${VERSION}" --notes "Published ${PKG_NAME}@${VERSION} to npm with dist-tag ${TAG}." --verify-tag
+          fi
+          gh release view "${TAG_NAME}" --json tagName,isDraft,isPrerelease
+
+          rm -f "${TARBALL}"
+          echo "--- Published ${PKG_NAME}@${VERSION} ---"
