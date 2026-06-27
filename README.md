@@ -10,7 +10,9 @@ This package follows Alchemy's official custom-provider model: resources are dec
 
 | `@bjorntech/alchemy-azure` | `alchemy` (peer) | `effect` (peer) | Notes |
 | --------------- | ---------------- | --------------- | ----- |
-| `0.2.0-beta.57` | `2.0.0-beta.57`  | `>=4.0.0-beta.84 || >=4.0.0` | Current beta. |
+| `0.2.2-beta.59` | `2.0.0-beta.59`  | `>=4.0.0-beta.84 || >=4.0.0` | Current beta; VM gateway networking primitives. |
+| `0.2.1-beta.58` | `2.0.0-beta.58`  | `>=4.0.0-beta.84 || >=4.0.0` | Whole-resource stable reference migration. |
+| `0.2.0-beta.57` | `2.0.0-beta.57`  | `>=4.0.0-beta.84 || >=4.0.0` | Heartbeat groundwork. |
 | `0.1.1-beta.57` | `2.0.0-beta.57`  | `>=4.0.0-beta.84 || >=4.0.0` | Blob container fix and heartbeat groundwork. |
 | `0.1.0-beta.57` | `2.0.0-beta.57`  | `>=4.0.0-beta.84 || >=4.0.0` | Initial beta.57 compatibility release. |
 | `0.1.0-beta.35` | `2.0.0-beta.35`  | `>=4.0.0-beta.60` | Initial public beta. |
@@ -20,7 +22,7 @@ The `alchemy` peer dependency is exact-pinned to a specific beta because the v2 
 ## Install
 
 ```sh
-bun add alchemy@2.0.0-beta.57 effect @bjorntech/alchemy-azure
+bun add alchemy@2.0.0-beta.59 effect @bjorntech/alchemy-azure
 ```
 
 `alchemy` and `effect` are peer dependencies — install them in your app, not just transitively.
@@ -129,7 +131,7 @@ export default Alchemy.Stack(
 - `StorageAccount` - Azure Storage Account lifecycle with keys and connection string returned as `Redacted` values.
 - `BlobContainer` - Azure Blob container lifecycle.
 - `UserAssignedIdentity` - User-assigned managed identity lifecycle.
-- `VirtualNetwork` - Virtual network and subnet lifecycle.
+- `VirtualNetwork` - Virtual network and subnet lifecycle, including subnet ARM ID outputs and `subnetId(network, name)` lookup.
 - `NetworkSecurityGroup` - Network security group lifecycle.
 - `PublicIPAddress` - Public IP address lifecycle.
 - `CognitiveServices` - Azure AI/Cognitive Services account lifecycle.
@@ -147,7 +149,46 @@ export default Alchemy.Stack(
 - `ContainerRegistry` - Azure Container Registry lifecycle with admin credentials returned as `Redacted` values.
 - `ContainerImage` - Local Docker build and push to Azure Container Registry.
 - `ContainerApp` - Experimental Azure Container Apps runtime host from an explicit image.
-- `VirtualMachine` - Virtual Machine lifecycle.
+- `VirtualMachine` - Virtual Machine lifecycle with managed NIC, optional public IP / NSG attachment, IP forwarding, custom data, and private/public address outputs.
+
+## Gateway VM Pattern
+
+For SIP/RTP or other host-networked edge workloads, wire Azure networking primitives into the VM's managed NIC:
+
+```ts
+const network = yield* Azure.VirtualNetwork("Network", {
+  resourceGroup: group,
+  addressSpace: ["10.42.0.0/16"],
+  subnets: [{ name: "sip", addressPrefix: "10.42.1.0/24" }],
+});
+
+const publicIp = yield* Azure.PublicIPAddress("GatewayIp", {
+  resourceGroup: group,
+  sku: "Standard",
+  allocationMethod: "Static",
+  domainNameLabel: "my-sip-gateway",
+});
+
+const nsg = yield* Azure.NetworkSecurityGroup("GatewayNsg", {
+  resourceGroup: group,
+  securityRules: [
+    { name: "ssh", priority: 100, direction: "Inbound", access: "Allow", protocol: "Tcp", destinationPortRange: "22" },
+    { name: "sip", priority: 110, direction: "Inbound", access: "Allow", protocol: "*", destinationPortRange: "5060" },
+    { name: "rtp", priority: 120, direction: "Inbound", access: "Allow", protocol: "Udp", destinationPortRange: "10000-20000" },
+  ],
+});
+
+const vm = yield* Azure.VirtualMachine("GatewayVm", {
+  resourceGroup: group,
+  subnetId: Azure.subnetId(network, "sip"),
+  publicIPAddress: publicIp,
+  networkSecurityGroup: nsg,
+  enableIPForwarding: true,
+  adminUsername: "gateway",
+  sshPublicKey,
+  customData: cloudInit,
+});
+```
 
 ## Experimental Container App Host
 

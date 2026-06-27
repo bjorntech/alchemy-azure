@@ -4,6 +4,7 @@ import { ProfileLive } from "alchemy/Auth/Profile";
 import * as Provider from "alchemy/Provider";
 import { AzureAuth } from "./AuthProvider.ts";
 import { AzureClientsLive } from "./Clients.ts";
+import { AzureOperationLockLive } from "./OperationLock.ts";
 import { BlobContainer, BlobContainerProvider } from "./BlobContainer.ts";
 import * as Credentials from "./Credentials.ts";
 import { ContainerApp, ContainerAppProvider } from "./ContainerApp.ts";
@@ -117,6 +118,7 @@ export const providers = () =>
       ),
     ),
     Layer.provide(AzureClientsLive),
+    Layer.provide(AzureOperationLockLive),
     Layer.provideMerge(Credentials.fromAuthProvider()),
     Layer.provideMerge(AzureAuth),
     Layer.provideMerge(ProfileLive),

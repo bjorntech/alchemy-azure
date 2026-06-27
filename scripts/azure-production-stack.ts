@@ -1,5 +1,4 @@
 import * as Alchemy from "alchemy";
-import * as Output from "alchemy/Output";
 import { destroy } from "alchemy/RemovalPolicy";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
@@ -251,7 +250,11 @@ export default Alchemy.Stack(
           resourceGroup: group,
           adminUsername: "azureuser",
           adminPassword: Redacted.make(smokePassword),
-          subnetId: Output.interpolate`/subscriptions/${subscriptionId}/resourceGroups/${group.name}/providers/Microsoft.Network/virtualNetworks/${vnet.name}/subnets/default`,
+          subnetId: Azure.subnetId(vnet, "default"),
+          publicIPAddress: publicIp,
+          networkSecurityGroup: nsg,
+          enableIPForwarding: updated,
+          customData: `#cloud-config\npackages:\n  - docker.io\nwrite_files:\n  - path: /etc/alchemy-azure-smoke\n    content: gateway-vm\n`,
           tags,
         }).pipe(destroy())
       : undefined;
@@ -280,6 +283,9 @@ export default Alchemy.Stack(
       staticWebAppUrl: staticWebApp?.url,
       containerInstanceFqdn: containerInstance.fqdn,
       vmId: vm?.vmId,
+      vmPrivateIpAddress: vm?.privateIpAddress,
+      vmPublicIpAddress: vm?.publicIpAddress,
+      vmPublicFqdn: vm?.publicFqdn,
     };
   }),
 );

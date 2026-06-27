@@ -4,6 +4,32 @@ All notable changes to `@bjorntech/alchemy-azure` are documented here. The forma
 
 ## [Unreleased]
 
+## [0.2.2-beta.59] - 2026-06-27
+
+### Changed
+
+- Updated compatibility target to `alchemy@2.0.0-beta.59`. Effect peer is unchanged (`>=4.0.0-beta.84`).
+
+### Added
+
+- `VirtualMachine` can now wire its managed NIC to a public IP address and network security group, enable NIC IP forwarding, pass cloud-init/custom data, and return NIC/private/public address outputs. `VirtualNetwork` subnet outputs now include ARM IDs, and `subnetId(network, name)` resolves a named subnet for VM wiring.
+
+## [0.2.1-beta.58] - 2026-06-27
+
+### Changed
+
+- Updated compatibility target to `alchemy@2.0.0-beta.58`. Effect peer is unchanged (`>=4.0.0-beta.84`).
+
+### Fixed
+
+- Migrated to alchemy beta.58 whole-resource reference resolution, which exposes only a referenced resource's *stable* attributes on update. `ResourceGroup` now lists `location` as a stable attribute, and every resource that derives its location from a `ResourceGroup` reference resolves `location` from its own persisted state on update. Previously, updating (or replacing during an update) resources such as identities, networking, data, messaging, compute, App Service, and Container Apps resources failed with `… requires location when resourceGroup is a string.`
+- Container App and Container Image registry credentials, and Function App storage connection strings, are now re-read live from the source resource's stable identity (`resourceGroupName` + `name`) instead of dereferencing the non-stable secret attributes off a whole-resource reference, which are stripped on update.
+- App Service / Function App no longer plan a spurious **replace** on update: the diff fingerprint now compares the resolved stable scalar of cross-resource references (`serverFarmId`, `storageAccount`) instead of the reference objects, whose serialization changed under beta.58.
+
+### Added
+
+- `AzureOperationLock`: a scoped serialization service that models Azure control-plane mutual-exclusion that the dependency graph cannot express. App Service plan and its sites serialize on the webspace (resource group); Container Apps serialize on their managed environment. This removes `409 operation in progress` and `environment has not been provisioned successfully` conflicts when a plan/environment and its dependents update concurrently.
+
 ## [0.2.0-beta.57] - 2026-06-27
 
 ### Added

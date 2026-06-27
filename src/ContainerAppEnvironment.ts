@@ -6,7 +6,8 @@ import { Resource } from "alchemy";
 import * as Provider from "alchemy/Provider";
 import { makeAzureClients } from "./Clients.ts";
 import { azureError, isNotFound } from "./Errors.ts";
-import { collectAzurePages, diffValueEqual, makePhysicalNames, requireLocation, resourceGroupName, resolveResourceValue, withHeartbeat } from "./Internal.ts";
+import { collectAzurePages, diffValueEqual, makePhysicalNames, persistedLocation, requireLocation, resourceGroupName, resolveResourceValue, withHeartbeat } from "./Internal.ts";
+import { AzureOperationLock, containerEnvironmentScopeKey } from "./OperationLock.ts";
 import type { Providers } from "./Providers.ts";
 import type { ResourceProviderRegistration } from "./ResourceProviderRegistration.ts";
 import type { ResourceGroup } from "./ResourceGroup.ts";
@@ -69,6 +70,7 @@ export const ContainerAppEnvironmentProvider = () =>
     ContainerAppEnvironment,
     Effect.gen(function* () {
       const clients = yield* makeAzureClients;
+      const lock = yield* AzureOperationLock;
       const names = yield* makePhysicalNames;
 
       const environmentName = (id: string, instanceId: string, name?: string) =>
@@ -116,7 +118,7 @@ export const ContainerAppEnvironmentProvider = () =>
           if (!output) return undefined;
           const name = environmentName(id, instanceId, news.name);
           const groupName = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = persistedLocation(news.location, output.location);
           if (
             name !== output.name ||
             groupName !== output.resourceGroupName ||
@@ -161,7 +163,9 @@ export const ContainerAppEnvironmentProvider = () =>
             yield* resolveResourceValue(news.providerRegistration.namespace);
           }
           const groupName = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           if (output && olds) {
             const existing = yield* Effect.tryPromise({
               try: () => clients.appContainers.managedEnvironments.get(groupName, name),
@@ -176,34 +180,39 @@ export const ContainerAppEnvironmentProvider = () =>
               throw new Error(`Cannot adopt resource "${name}" without --adopt.`);
             }
           }
-          const environment = yield* Effect.tryPromise({
-            try: () =>
-              clients.appContainers.managedEnvironments.beginCreateOrUpdateAndWait(
-                groupName,
-                name,
-                {
-                  location,
-                  zoneRedundant: news.zoneRedundant ?? false,
-                  tags: withAlchemyTags(id, news.tags),
-                  appLogsConfiguration:
-                    news.logAnalyticsCustomerId && news.logAnalyticsSharedKey
-                      ? {
-                          destination: "log-analytics",
-                          logAnalyticsConfiguration: {
-                            customerId: news.logAnalyticsCustomerId,
-                            sharedKey: news.logAnalyticsSharedKey,
-                          },
-                        }
-                      : undefined,
-                },
-              ),
-            catch: (cause) =>
-              azureError({
-                operation: "reconcile Container Apps managed environment",
-                resource: name,
-                cause,
-              }),
-          }).pipe(withHeartbeat(`Container Apps managed environment "${name}"`));
+          // Serialize against Container App operations sharing this environment;
+          // an app cannot be mutated while its environment is provisioning.
+          const environment = yield* lock.withLock(
+            containerEnvironmentScopeKey(groupName, name),
+            Effect.tryPromise({
+              try: () =>
+                clients.appContainers.managedEnvironments.beginCreateOrUpdateAndWait(
+                  groupName,
+                  name,
+                  {
+                    location,
+                    zoneRedundant: news.zoneRedundant ?? false,
+                    tags: withAlchemyTags(id, news.tags),
+                    appLogsConfiguration:
+                      news.logAnalyticsCustomerId && news.logAnalyticsSharedKey
+                        ? {
+                            destination: "log-analytics",
+                            logAnalyticsConfiguration: {
+                              customerId: news.logAnalyticsCustomerId,
+                              sharedKey: news.logAnalyticsSharedKey,
+                            },
+                          }
+                        : undefined,
+                  },
+                ),
+              catch: (cause) =>
+                azureError({
+                  operation: "reconcile Container Apps managed environment",
+                  resource: name,
+                  cause,
+                }),
+            }).pipe(withHeartbeat(`Container Apps managed environment "${name}"`)),
+          );
           return toAttributes(environment, groupName);
         }),
         delete: Effect.fnUntraced(function* ({ olds, output, session }) {

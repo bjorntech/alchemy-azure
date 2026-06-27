@@ -9,6 +9,7 @@ export * from "./ContainerRegistry.ts";
 export * from "./Credentials.ts";
 export * from "./Errors.ts";
 export * from "./MoreResources.ts";
+export * from "./OperationLock.ts";
 export * from "./Providers.ts";
 export * from "./ResourceProviderRegistration.ts";
 export * from "./ResourceGroup.ts";

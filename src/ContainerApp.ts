@@ -10,18 +10,22 @@ import type { BaseRuntimeContext } from "alchemy/RuntimeContext";
 import type { Resource } from "alchemy";
 import * as Provider from "alchemy/Provider";
 import { makeAzureClients } from "./Clients.ts";
+import type { AzureClientsShape } from "./Clients.ts";
 import { azureError, isNotFound } from "./Errors.ts";
 import {
   collectAzurePages,
   makePhysicalNames,
+  persistedLocation,
   requireLocation,
   resourceGroupName,
   resolveResourceValue,
   withHeartbeat,
 } from "./Internal.ts";
+import { AzureOperationLock, containerEnvironmentScopeKeyFromId } from "./OperationLock.ts";
 import type { ContainerAppEnvironment } from "./ContainerAppEnvironment.ts";
 import type { ContainerImage } from "./ContainerImage.ts";
 import type { ContainerRegistry } from "./ContainerRegistry.ts";
+import { readRegistryAdminCredentials } from "./ContainerRegistry.ts";
 import type { Providers } from "./Providers.ts";
 import type { ResourceProviderRegistration } from "./ResourceProviderRegistration.ts";
 import type { ResourceGroup } from "./ResourceGroup.ts";
@@ -203,6 +207,7 @@ export const ContainerAppProvider = () =>
     ContainerApp,
     Effect.gen(function* () {
       const clients = yield* makeAzureClients;
+      const lock = yield* AzureOperationLock;
       const names = yield* makePhysicalNames;
 
       const containerAppName = (id: string, instanceId: string, name?: string) =>
@@ -249,7 +254,7 @@ export const ContainerAppProvider = () =>
           if (!output) return undefined;
           const name = containerAppName(id, instanceId, news.name);
           const groupName = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = persistedLocation(news.location, output.location);
           const resolvedImage = yield* imageName(news.image);
           const oldRegistry = yield* registryDiffState(olds);
           const newRegistry = yield* registryDiffState(news);
@@ -318,11 +323,13 @@ export const ContainerAppProvider = () =>
             yield* resolveResourceValue(news.providerRegistration.namespace);
           }
           const groupName = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const targetPort = news.targetPort ?? 3000;
           const resolvedEnvironmentId = yield* environmentId(news.environment);
           const resolvedImage = yield* imageName(news.image);
-          const registry = yield* registryPullCredentials(news);
+          const registry = yield* registryPullCredentials(clients, news);
           const env = materializeContainerEnv(news.env ?? {});
           const secrets = [
             ...(registry.password
@@ -340,7 +347,11 @@ export const ContainerAppProvider = () =>
               throw new Error(`Cannot adopt resource "${name}" without --adopt.`);
             }
           }
-          const app = yield* Effect.tryPromise({
+          // Serialize against the managed environment's own update; Azure
+          // rejects a Container App mutation while its environment provisions.
+          const app = yield* lock.withLock(
+            containerEnvironmentScopeKeyFromId(resolvedEnvironmentId),
+            Effect.tryPromise({
             try: () =>
               clients.appContainers.containerApps.beginCreateOrUpdateAndWait(groupName, name, {
                 location,
@@ -396,7 +407,8 @@ export const ContainerAppProvider = () =>
                 resource: name,
                 cause,
               }),
-          }).pipe(withHeartbeat(`Container App "${name}"`));
+          }).pipe(withHeartbeat(`Container App "${name}"`)),
+          );
           return toAttributes(app, groupName, news.buildHash);
         }),
         delete: Effect.fnUntraced(function* ({ olds, output, session }) {
@@ -509,7 +521,7 @@ function imageName(image: string | ContainerImage) {
   });
 }
 
-function registryPullCredentials(props: ContainerAppProps) {
+function registryPullCredentials(clients: AzureClientsShape, props: ContainerAppProps) {
   return Effect.gen(function* () {
     if (props.registryUsername && props.registryPassword) {
       return {
@@ -522,21 +534,33 @@ function registryPullCredentials(props: ContainerAppProps) {
       };
     }
     if (!props.registry) return {};
+    // Re-read admin credentials live from the registry's stable identity rather
+    // than dereferencing non-stable `username`/`password` off the reference,
+    // which are stripped on update under alchemy beta.58.
     const server = yield* registryLoginServer(props.registry);
-    const username = yield* resolveResourceValue(props.registry.username);
-    const password = yield* resolveResourceValue(props.registry.password);
+    const { username, password } = yield* readRegistryAdminCredentials(clients, props.registry);
     return { server, username, password };
   });
 }
 
 function registryDiffState(props: ContainerAppProps) {
   return Effect.gen(function* () {
-    const credentials = yield* registryPullCredentials(props);
-    return {
-      server: credentials.server,
-      username: credentials.username,
-      password: credentials.password ? Redacted.value(credentials.password) : undefined,
-    };
+    if (props.registryUsername && props.registryPassword) {
+      return {
+        server: props.registry ? yield* registryLoginServer(props.registry) : undefined,
+        username: props.registryUsername,
+        password:
+          typeof props.registryPassword === "string"
+            ? props.registryPassword
+            : Redacted.value(props.registryPassword),
+      };
+    }
+    if (!props.registry) return {};
+    // A managed registry is identified by its stable login server only. Admin
+    // credentials are re-read live at reconcile, so they are deliberately kept
+    // out of the diff fingerprint: they are non-stable secrets, absent on
+    // update, and a live listCredentials call does not belong in planning.
+    return { server: yield* registryLoginServer(props.registry), managed: true };
   });
 }
 

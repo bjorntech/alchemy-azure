@@ -92,7 +92,7 @@ export function installAzureMock(): AzureMock {
   const poller = <T>(value: T) => ({ pollUntilDone: async () => value });
   const finishingPoller = <T>(value: T) => ({ pollUntilFinished: async () => value });
 
-  type Extra = (name: string, params: Record<string, unknown>) => Record<string, unknown>;
+  type Extra = (name: string, params: Record<string, unknown>, rg: string) => Record<string, unknown>;
 
   // Builder for the common (resourceGroup, name) lifecycle, parameterised by the
   // SDK method names each Azure client happens to use.
@@ -102,7 +102,7 @@ export function installAzureMock(): AzureMock {
   ): Record<string, unknown> => ({
     [opts.get]: async (rg: string, name: string) => get(kind, rg, name),
     [opts.create]: async (rg: string, name: string, params: Record<string, unknown>) =>
-      put(kind, rg, name, params, opts.extra?.(name, params)),
+      put(kind, rg, name, params, opts.extra?.(name, params, rg)),
     [opts.del]: async (rg: string, name: string) => del(kind, rg, name),
     listByResourceGroup: async (rg: string) => listKind(kind, rg),
     list: async (rg?: string) => listKind(kind, rg),
@@ -120,7 +120,7 @@ export function installAzureMock(): AzureMock {
       parent: string,
       name: string,
       params: Record<string, unknown>,
-    ) => put(kind, `${rg}/${parent}`, name, params, opts.extra?.(name, params)),
+    ) => put(kind, `${rg}/${parent}`, name, params, opts.extra?.(name, params, `${rg}/${parent}`)),
     [opts.del]: async (rg: string, parent: string, name: string) =>
       del(kind, `${rg}/${parent}`, name),
     listByProfile: async (rg: string, parent: string) => listKind(kind, `${rg}/${parent}`),
@@ -133,6 +133,24 @@ export function installAzureMock(): AzureMock {
       get: "get",
       create: "beginCreateOrUpdateAndWait",
       del: "beginDeleteAndWait",
+      extra: (name, params, rg) => {
+        if (kind === "virtualNetworks") {
+          return {
+            subnets: ((params.subnets as Array<Record<string, unknown>> | undefined) ?? []).map((subnet) => ({
+              ...subnet,
+              id: `${resourceId(rg, "virtualNetworks", name)}/subnets/${subnet.name}`,
+            })),
+          };
+        }
+        if (kind === "networkInterfaces") {
+          return {
+            ipConfigurations: ((params.ipConfigurations as Array<Record<string, unknown>> | undefined) ?? []).map(
+              (config) => ({ ...config, privateIPAddress: "10.0.0.4" }),
+            ),
+          };
+        }
+        return {};
+      },
     });
 
   const implemented = {
@@ -248,7 +266,15 @@ export function installAzureMock(): AzureMock {
         get: "get",
         create: "beginCreateOrUpdateAndWait",
         del: "beginDeleteAndWait",
-        extra: () => ({ ipAddress: "20.0.0.1" }),
+        extra: (_name, params) => {
+          const dnsSettings = params.dnsSettings as { domainNameLabel?: string } | undefined;
+          return {
+            ipAddress: "20.0.0.1",
+            dnsSettings: dnsSettings
+              ? { ...dnsSettings, fqdn: `${dnsSettings.domainNameLabel}.westeurope.cloudapp.azure.com` }
+              : undefined,
+          };
+        },
       }),
     },
     cognitiveServices: {

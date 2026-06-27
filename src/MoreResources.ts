@@ -4,22 +4,27 @@ import * as Schedule from "effect/Schedule";
 import { Unowned } from "alchemy/AdoptPolicy";
 import { isResolved } from "alchemy/Diff";
 import type { Input } from "alchemy/Input";
+import * as Output from "alchemy/Output";
 import { Resource, type ResourceClass } from "alchemy";
 import * as Provider from "alchemy/Provider";
+import type { AzureClientsShape } from "./Clients.ts";
 import { makeAzureClients } from "./Clients.ts";
 import { azureError, isNotFound } from "./Errors.ts";
 import {
   collectAzurePages,
   makePhysicalNames,
+  persistedLocation,
   requireLocation,
   resourceGroupName,
   resolveResourceValue,
   withHeartbeat,
   type NamedResourceGroup,
 } from "./Internal.ts";
+import { AzureOperationLock, appServiceScopeKey } from "./OperationLock.ts";
 import type { Providers } from "./Providers.ts";
 import { hasAlchemyTags, withAlchemyTags } from "./ResourceGroup.ts";
 import type { StorageAccount } from "./StorageAccount.ts";
+import { readStorageConnectionString } from "./StorageAccount.ts";
 
 type Tags = Record<string, string>;
 type AzureResponse = {
@@ -48,12 +53,12 @@ type Attrs<Extra extends object = {}> = Extra & {
 };
 
 function diffOnChanges<P, A extends Attrs>(options: {
-  identity: (input: { id: string; instanceId: string; props: P }) =>
+  identity: (input: { id: string; instanceId: string; props: P; output: A }) =>
     | Effect.Effect<Record<string, unknown>, unknown, unknown>
     | Record<string, unknown>;
-  replace?: (props: P) => unknown;
+  replace?: (props: P) => unknown | Effect.Effect<unknown, unknown, unknown>;
   replaceChanged?: (olds: P, news: P) => boolean;
-  mutable?: (props: P) => unknown;
+  mutable?: (props: P) => unknown | Effect.Effect<unknown, unknown, unknown>;
 }) {
   return Effect.fnUntraced(function* (input: {
     id: string;
@@ -65,16 +70,22 @@ function diffOnChanges<P, A extends Attrs>(options: {
     const { id, instanceId, olds, news, output } = input;
     if (!isResolved(news)) return undefined;
     if (!output) return undefined;
-    const desiredIdentity = yield* asEffect(options.identity({ id, instanceId, props: news }));
+    // diff only runs against an existing resource, so identity derives location
+    // from the persisted output, never from the referenced group.
+    const desiredIdentity = yield* asEffect(options.identity({ id, instanceId, props: news, output }));
     for (const [key, value] of Object.entries(desiredIdentity)) {
       if (value !== (output as Record<string, unknown>)[key]) return { action: "replace" } as const;
     }
-    if (options.replace && !sameValue(options.replace(olds), options.replace(news))) {
-      return { action: "replace" } as const;
+    if (options.replace) {
+      const before = yield* asEffect(options.replace(olds));
+      const after = yield* asEffect(options.replace(news));
+      if (!sameValue(before, after)) return { action: "replace" } as const;
     }
     if (options.replaceChanged?.(olds, news)) return { action: "replace" } as const;
-    if (options.mutable && !sameValue(options.mutable(olds), options.mutable(news))) {
-      return { action: "update" } as const;
+    if (options.mutable) {
+      const before = yield* asEffect(options.mutable(olds));
+      const after = yield* asEffect(options.mutable(news));
+      if (!sameValue(before, after)) return { action: "update" } as const;
     }
     return undefined;
   });
@@ -83,12 +94,12 @@ function diffOnChanges<P, A extends Attrs>(options: {
 function resourceGroupIdentity<P extends { name?: string; resourceGroup: NamedResourceGroup; location?: string }>(
   nameOf: (id: string, instanceId: string, props: P) => string,
 ) {
-  return ({ id, instanceId, props }: { id: string; instanceId: string; props: P }) =>
+  return ({ id, instanceId, props, output }: { id: string; instanceId: string; props: P; output: { location: string } }) =>
     Effect.gen(function* () {
       return {
         name: nameOf(id, instanceId, props),
         resourceGroupName: yield* resourceGroupName(props.resourceGroup),
-        location: yield* requireLocation(id, props.location, props.resourceGroup),
+        location: persistedLocation(props.location, output.location),
       };
     });
 }
@@ -347,7 +358,9 @@ export const UserAssignedIdentityProvider = () =>
         }),
         reconcile: Effect.fnUntraced(function* ({ id, instanceId, olds, news, output }) {
           const rg = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const name = nameOf(id, instanceId, news);
           yield* ensureTaggedOwnership(id, "user-assigned identity", name, output, olds, () =>
             clients.msi.userAssignedIdentities.get(rg, name)
@@ -399,7 +412,7 @@ export type VirtualNetwork = Resource<
   VirtualNetworkProps,
   Attrs<{
     addressSpace: string[];
-    subnets: NonNullable<VirtualNetworkProps["subnets"]>;
+    subnets: Array<NonNullable<VirtualNetworkProps["subnets"]>[number] & { id: string }>;
     dnsServers?: string[];
   }>,
   never,
@@ -445,7 +458,9 @@ export const VirtualNetworkProvider = () =>
         }),
         reconcile: Effect.fnUntraced(function* ({ id, instanceId, olds, news, output }) {
           const rg = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const name = nameOf(id, instanceId, news);
           const addressPrefixes = news.addressSpace ?? ["10.0.0.0/16"];
           const subnets = news.subnets ?? [{ name: "default", addressPrefix: "10.0.0.0/24" }];
@@ -497,12 +512,24 @@ function virtualNetworkAttrs(vnet: AzureResponse, resourceGroupName: string) {
     addressSpace: addressSpace?.addressPrefixes ?? [],
     subnets: records(data.subnets).map((s) => ({
       name: s.name as string,
+      id: s.id as string,
       addressPrefix: (s as Record<string, unknown>).addressPrefix as string,
     })),
     dnsServers: dhcpOptions?.dnsServers,
     provisioningState: vnet.provisioningState,
     tags: vnet.tags,
   } satisfies VirtualNetwork["Attributes"];
+}
+
+/** Resolve a named subnet ARM id from a VirtualNetwork output. */
+export function subnetId(network: VirtualNetwork, name: string) {
+  return Output.map(network.subnets, (subnets) => {
+    const subnet = subnets.find((item) => item.name === name);
+    if (!subnet) {
+      throw new Error(`Virtual network has no subnet named "${name}".`);
+    }
+    return subnet.id;
+  });
 }
 
 export interface SecurityRule {
@@ -560,7 +587,9 @@ export const NetworkSecurityGroupProvider = () =>
         }),
         reconcile: Effect.fnUntraced(function* ({ id, instanceId, olds, news, output }) {
           const rg = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const name = nameOf(id, instanceId, news);
           yield* ensureTaggedOwnership(id, "network security group", name, output, olds, () =>
             clients.network.networkSecurityGroups.get(rg, name)
@@ -694,7 +723,9 @@ export const PublicIPAddressProvider = () =>
         }),
         reconcile: Effect.fnUntraced(function* ({ id, instanceId, olds, news, output }) {
           const rg = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const name = nameOf(id, instanceId, news);
           const skuName = news.sku ?? "Basic";
           yield* ensureTaggedOwnership(id, "public IP address", name, output, olds, () =>
@@ -814,7 +845,9 @@ export const CognitiveServicesProvider = () =>
         }),
         reconcile: Effect.fnUntraced(function* ({ id, instanceId, olds, news, output }) {
           const rg = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const name = nameOf(id, instanceId, news);
           yield* ensureTaggedOwnership(id, "Cognitive Services account", name, output, olds, () =>
             clients.cognitiveServices.accounts.get(rg, name)
@@ -946,7 +979,9 @@ export const ServiceBusProvider = () =>
         }),
         reconcile: Effect.fnUntraced(function* ({ id, instanceId, olds, news, output }) {
           const rg = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const name = nameOf(id, instanceId, news);
           const sku = news.sku ?? "Standard";
           yield* ensureTaggedOwnership(id, "Service Bus namespace", name, output, olds, () =>
@@ -1070,7 +1105,9 @@ export const CosmosDBAccountProvider = () =>
         }),
         reconcile: Effect.fnUntraced(function* ({ id, instanceId, olds, news, output }) {
           const rg = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const name = nameOf(id, instanceId, news);
           yield* ensureTaggedOwnership(id, "Cosmos DB account", name, output, olds, () =>
             clients.cosmosDB.databaseAccounts.get(rg, name)
@@ -1191,7 +1228,9 @@ export const SqlServerProvider = () =>
         }),
         reconcile: Effect.fnUntraced(function* ({ id, instanceId, olds, news, output }) {
           const rg = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const name = nameOf(id, instanceId, news);
           yield* ensureTaggedOwnership(id, "SQL server", name, output, olds, () =>
             clients.sql.servers.get(rg, name)
@@ -1297,12 +1336,12 @@ export const SqlDatabaseProvider = () =>
               .map(([rg, serverName, database]) => sqlDbAttrs(database as AzureResponse, rg, serverName));
           }),
         diff: diffOnChanges({
-          identity: ({ id, instanceId, props }) =>
+          identity: ({ id, instanceId, props, output }) =>
             Effect.gen(function* () {
               return {
                 name: nameOf(id, instanceId, props),
                 resourceGroupName: yield* resourceGroupName(props.resourceGroup),
-                location: yield* requireLocation(id, props.location, props.resourceGroup),
+                location: persistedLocation(props.location, output.location),
                 serverName: yield* serverName(props.server),
               };
             }),
@@ -1326,7 +1365,9 @@ export const SqlDatabaseProvider = () =>
         }),
         reconcile: Effect.fnUntraced(function* ({ id, instanceId, olds, news, output }) {
           const rg = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const sn = yield* serverName(news.server);
           const name = nameOf(id, instanceId, news);
           yield* ensureTaggedOwnership(id, "SQL database", name, output, olds, () =>
@@ -1434,7 +1475,9 @@ export const KeyVaultProvider = () =>
         }),
         reconcile: Effect.fnUntraced(function* ({ id, instanceId, olds, news, output }) {
           const rg = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const name = nameOf(id, instanceId, news);
           const tenantId = news.tenantId ?? clients.tenantId;
           if (!tenantId) throw new Error(`KeyVault ${id} requires tenantId.`);
@@ -1505,6 +1548,7 @@ export const AppServicePlanProvider = () =>
     AppServicePlan,
     Effect.gen(function* () {
       const clients = yield* makeAzureClients;
+      const lock = yield* AzureOperationLock;
       const names = yield* makePhysicalNames;
       const nameOf = (id: string, instanceId: string, props: AppServicePlanProps) =>
         names.physicalName(id, instanceId, props.name, { maxLength: 40, lowercase: true });
@@ -1544,24 +1588,30 @@ export const AppServicePlanProvider = () =>
         }),
         reconcile: Effect.fnUntraced(function* ({ id, instanceId, olds, news, output }) {
           const rg = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const name = nameOf(id, instanceId, news);
           const sku = news.sku ?? "B1";
           yield* ensureTaggedOwnership(id, "App Service plan", name, output, olds, () =>
             clients.appService.appServicePlans.get(rg, name)
           );
-          const plan = yield* azurePromise("reconcile App Service plan", name, () =>
-            clients.appService.appServicePlans.beginCreateOrUpdateAndWait(rg, name, {
-              location,
-              kind: news.kind,
-              reserved: news.reserved ?? false,
-              sku: {
-                name: sku,
-                tier: news.tier ?? skuTier(sku),
-                capacity: news.capacity ?? 1,
-              },
-              tags: withAlchemyTags(id, news.tags),
-            } as Parameters<typeof clients.appService.appServicePlans.beginCreateOrUpdateAndWait>[2]),
+          // Serialize against sites in the same App Service webspace.
+          const plan = yield* lock.withLock(
+            appServiceScopeKey(rg),
+            azurePromise("reconcile App Service plan", name, () =>
+              clients.appService.appServicePlans.beginCreateOrUpdateAndWait(rg, name, {
+                location,
+                kind: news.kind,
+                reserved: news.reserved ?? false,
+                sku: {
+                  name: sku,
+                  tier: news.tier ?? skuTier(sku),
+                  capacity: news.capacity ?? 1,
+                },
+                tags: withAlchemyTags(id, news.tags),
+              } as Parameters<typeof clients.appService.appServicePlans.beginCreateOrUpdateAndWait>[2]),
+            ),
           );
           return appServicePlanAttrs(plan, rg);
         }),
@@ -1643,6 +1693,7 @@ function webAppProvider(
     webAppResource,
     Effect.gen(function* () {
       const clients = yield* makeAzureClients;
+      const lock = yield* AzureOperationLock;
       const names = yield* makePhysicalNames;
       const nameOf = (id: string, instanceId: string, props: AppServiceProps) =>
         names.physicalName(id, instanceId, props.name, { maxLength: 60, lowercase: true });
@@ -1664,25 +1715,37 @@ function webAppProvider(
             ),
           ),
         diff: diffOnChanges({
-          identity: ({ id, instanceId, props }) =>
+          identity: ({ id, instanceId, props, output }) =>
             Effect.gen(function* () {
               return {
                 name: nameOf(id, instanceId, props),
                 resourceGroupName: yield* resourceGroupName(props.resourceGroup),
-                location: yield* requireLocation(id, props.location, props.resourceGroup),
+                location: persistedLocation(props.location, output.location),
               };
             }),
-          replace: (props) => ({
-            serverFarmId: props.serverFarmId,
-            kind: props.kind ?? (isFunction ? "functionapp" : "app"),
-          }),
-          mutable: (props) => ({
-            httpsOnly: props.httpsOnly ?? true,
-            appSettings: props.appSettings ?? {},
-            storageAccount: isFunction ? (props as FunctionAppProps).storageAccount : undefined,
-            functionsVersion: isFunction ? ((props as FunctionAppProps).functionsVersion ?? "~4") : undefined,
-            tags: props.tags,
-          }),
+          // Resolve cross-resource references to their stable scalar identity
+          // before comparison. Comparing the whole-resource reference objects
+          // serializes inconsistently under alchemy beta.58 (stripped on update)
+          // and produced spurious replaces/updates.
+          replace: (props) =>
+            Effect.gen(function* () {
+              return {
+                serverFarmId: yield* resolveServerFarmId(props.serverFarmId),
+                kind: props.kind ?? (isFunction ? "functionapp" : "app"),
+              };
+            }),
+          mutable: (props) =>
+            Effect.gen(function* () {
+              return {
+                httpsOnly: props.httpsOnly ?? true,
+                appSettings: props.appSettings ?? {},
+                storageAccount: isFunction
+                  ? yield* resolveStorageAccountIdentity((props as FunctionAppProps).storageAccount)
+                  : undefined,
+                functionsVersion: isFunction ? ((props as FunctionAppProps).functionsVersion ?? "~4") : undefined,
+                tags: props.tags,
+              };
+            }),
         }),
         read: Effect.fnUntraced(function* ({ id, instanceId, olds, output }) {
           if (!output && !olds) return undefined;
@@ -1696,7 +1759,9 @@ function webAppProvider(
         }),
         reconcile: Effect.fnUntraced(function* ({ id, instanceId, olds, news, output }) {
           const rg = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const name = nameOf(id, instanceId, news);
           const serverFarmId = yield* resolveServerFarmId(news.serverFarmId);
           yield* ensureTaggedOwnership(id, type, name, output, olds, () =>
@@ -1705,26 +1770,31 @@ function webAppProvider(
           const appSettings = { ...news.appSettings };
           if (isFunction) {
             const fn = news as FunctionAppProps;
-            const storageConnectionString = yield* resolveStorageConnectionString(fn.storageAccount);
+            const storageConnectionString = yield* resolveStorageConnectionString(clients, fn.storageAccount);
             appSettings.AzureWebJobsStorage = storageConnectionString;
             appSettings.WEBSITE_CONTENTAZUREFILECONNECTIONSTRING = storageConnectionString;
             appSettings.FUNCTIONS_EXTENSION_VERSION = fn.functionsVersion ?? "~4";
             appSettings.FUNCTIONS_WORKER_RUNTIME = appSettings.FUNCTIONS_WORKER_RUNTIME ?? "node";
           }
-          const app = yield* azurePromise("reconcile web app", name, () =>
-            clients.appService.webApps.beginCreateOrUpdateAndWait(rg, name, {
-              location,
-              serverFarmId,
-              httpsOnly: news.httpsOnly ?? true,
-              kind: news.kind ?? (isFunction ? "functionapp" : "app"),
-              siteConfig: {
-                appSettings: Object.entries(appSettings).map(([name, value]) => ({
-                  name,
-                  value,
-                })),
-              },
-              tags: withAlchemyTags(id, news.tags),
-            } as Parameters<typeof clients.appService.webApps.beginCreateOrUpdateAndWait>[2]),
+          // Serialize all operations in the App Service webspace (plan + its
+          // sites); Azure rejects concurrent site/plan mutations in one webspace.
+          const app = yield* lock.withLock(
+            appServiceScopeKey(rg),
+            azurePromise("reconcile web app", name, () =>
+              clients.appService.webApps.beginCreateOrUpdateAndWait(rg, name, {
+                location,
+                serverFarmId,
+                httpsOnly: news.httpsOnly ?? true,
+                kind: news.kind ?? (isFunction ? "functionapp" : "app"),
+                siteConfig: {
+                  appSettings: Object.entries(appSettings).map(([name, value]) => ({
+                    name,
+                    value,
+                  })),
+                },
+                tags: withAlchemyTags(id, news.tags),
+              } as Parameters<typeof clients.appService.webApps.beginCreateOrUpdateAndWait>[2]),
+            ),
           );
           return webAppAttrs(app, rg);
         }),
@@ -1746,12 +1816,28 @@ function resolveServerFarmId(serverFarmId: string | AppServicePlan) {
     : resolveResourceValue(serverFarmId.serverFarmId);
 }
 
-function resolveStorageConnectionString(storageAccount: string | StorageAccount): Effect.Effect<string, unknown, unknown> {
+/**
+ * Resolve a storage account reference to its stable name for diff comparison.
+ * Used only as an identity fingerprint, so it relies on the stable `name`
+ * attribute rather than re-reading secrets.
+ */
+function resolveStorageAccountIdentity(
+  storageAccount: string | StorageAccount | undefined,
+): Effect.Effect<string | undefined, unknown, unknown> {
+  if (!storageAccount) return Effect.succeed(undefined);
   if (typeof storageAccount === "string") return Effect.succeed(storageAccount);
-  return Effect.gen(function* () {
-    const connectionString = yield* resolveResourceValue(storageAccount.primaryConnectionString);
-    return Redacted.value(connectionString);
-  });
+  return resolveResourceValue(storageAccount.name);
+}
+
+function resolveStorageConnectionString(
+  clients: AzureClientsShape,
+  storageAccount: string | StorageAccount,
+): Effect.Effect<string, unknown, unknown> {
+  if (typeof storageAccount === "string") return Effect.succeed(storageAccount);
+  // Re-read the connection string live from the storage account's stable
+  // identity rather than dereferencing the non-stable secret attribute off the
+  // reference, which is stripped on update under alchemy beta.58.
+  return readStorageConnectionString(clients, storageAccount);
 }
 function webAppAttrs(app: AzureResponse, resourceGroupName: string) {
   const data = app as Record<string, unknown>;
@@ -1827,7 +1913,9 @@ export const StaticWebAppProvider = () =>
         }),
         reconcile: Effect.fnUntraced(function* ({ id, instanceId, olds, news, output }) {
           const rg = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const name = nameOf(id, instanceId, news);
           yield* ensureTaggedOwnership(id, "Static Web App", name, output, olds, () =>
             clients.appService.staticSites.getStaticSite(rg, name)
@@ -1947,7 +2035,9 @@ export const ContainerInstanceProvider = () =>
         }),
         reconcile: Effect.fnUntraced(function* ({ id, instanceId, olds, news, output }) {
           const rg = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const name = nameOf(id, instanceId, news);
           const ports = news.ports ?? [{ port: 80, protocol: "TCP" }];
           yield* ensureTaggedOwnership(id, "container instance", name, output, olds, () =>
@@ -2015,11 +2105,25 @@ export interface VirtualMachineProps extends BaseProps {
   vmSize?: string;
   image?: { publisher: string; offer: string; sku: string; version?: string };
   subnetId?: string;
+  /** Public IP object or ARM id to attach to the VM's managed NIC. */
+  publicIPAddress?: string | PublicIPAddress;
+  /** Network Security Group object or ARM id to attach to the VM's managed NIC. */
+  networkSecurityGroup?: string | NetworkSecurityGroup;
+  /** Enable IP forwarding on the VM's managed NIC. Useful for SIP/RTP gateways. */
+  enableIPForwarding?: boolean;
+  /** Cloud-init/custom data. Plain text is accepted and base64-encoded for Azure. */
+  customData?: string;
 }
 export type VirtualMachine = Resource<
   "Azure.VirtualMachine",
   VirtualMachineProps,
-  Attrs<{ vmId?: string; privateIpAddress?: string }>,
+  Attrs<{
+    vmId?: string;
+    networkInterfaceId?: string;
+    privateIpAddress?: string;
+    publicIpAddress?: string;
+    publicFqdn?: string;
+  }>,
   never,
   Providers
 >;
@@ -2042,20 +2146,27 @@ export const VirtualMachineProvider = () =>
           ),
         diff: diffOnChanges({
           identity: resourceGroupIdentity(nameOf),
-          replace: (props) => ({
-            adminUsername: props.adminUsername,
-            adminPassword: props.adminPassword,
-            sshPublicKey: props.sshPublicKey,
-            image: props.image ?? {
-              publisher: "Canonical",
-              offer: "0001-com-ubuntu-server-jammy",
-              sku: "22_04-lts",
-              version: "latest",
-            },
-            subnetId: props.subnetId,
-          }),
+          replace: (props) =>
+            Effect.gen(function* () {
+              return {
+                adminUsername: props.adminUsername,
+                adminPassword: props.adminPassword,
+                sshPublicKey: props.sshPublicKey,
+                customData: props.customData,
+                image: props.image ?? {
+                  publisher: "Canonical",
+                  offer: "0001-com-ubuntu-server-jammy",
+                  sku: "22_04-lts",
+                  version: "latest",
+                },
+                subnetId: props.subnetId,
+                publicIPAddressId: yield* resolvePublicIPAddressId(props.publicIPAddress),
+                networkSecurityGroupId: yield* resolveNetworkSecurityGroupId(props.networkSecurityGroup),
+              };
+            }),
           mutable: (props) => ({
             vmSize: props.vmSize ?? "Standard_B1s",
+            enableIPForwarding: props.enableIPForwarding ?? false,
             tags: props.tags,
           }),
         }),
@@ -2073,19 +2184,27 @@ export const VirtualMachineProvider = () =>
           if (!news.subnetId)
             throw new Error(`VirtualMachine ${id} requires subnetId in the external v2 provider.`);
           const rg = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           const name = nameOf(id, instanceId, news);
           const nicName = `${name}-nic`;
+          const networkInterfaceId = `/subscriptions/${clients.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Network/networkInterfaces/${nicName}`;
+          const publicIPAddressId = yield* resolvePublicIPAddressId(news.publicIPAddress);
+          const networkSecurityGroupId = yield* resolveNetworkSecurityGroupId(news.networkSecurityGroup);
           yield* ensureTaggedOwnership(id, "virtual machine", name, output, olds, () =>
             clients.compute.virtualMachines.get(rg, name)
           );
-          yield* azurePromise("reconcile virtual machine network interface", nicName, () =>
+          const nic = yield* azurePromise("reconcile virtual machine network interface", nicName, () =>
             clients.network.networkInterfaces.beginCreateOrUpdateAndWait(rg, nicName, {
               location,
+              enableIPForwarding: news.enableIPForwarding ?? false,
+              networkSecurityGroup: networkSecurityGroupId ? { id: networkSecurityGroupId } : undefined,
               ipConfigurations: [
                 {
                   name: "ipconfig1",
                   subnet: { id: news.subnetId },
+                  publicIPAddress: publicIPAddressId ? { id: publicIPAddressId } : undefined,
                   privateIPAllocationMethod: "Dynamic",
                 },
               ],
@@ -2112,8 +2231,11 @@ export const VirtualMachineProvider = () =>
                   typeof news.adminPassword === "string"
                     ? news.adminPassword
                     : news.adminPassword
-                      ? Redacted.value(news.adminPassword)
+                  ? Redacted.value(news.adminPassword)
                       : undefined,
+                customData: news.customData
+                  ? Buffer.from(news.customData, "utf8").toString("base64")
+                  : undefined,
                 linuxConfiguration: news.sshPublicKey
                   ? {
                       disablePasswordAuthentication: true,
@@ -2131,14 +2253,19 @@ export const VirtualMachineProvider = () =>
               networkProfile: {
                 networkInterfaces: [
                   {
-                    id: `/subscriptions/${clients.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Network/networkInterfaces/${nicName}`,
+                    id: networkInterfaceId,
                   },
                 ],
               },
               tags: withAlchemyTags(id, news.tags),
             } as Parameters<typeof clients.compute.virtualMachines.beginCreateOrUpdateAndWait>[2]),
           ).pipe(withHeartbeat(`virtual machine "${name}"`));
-          return vmAttrs(vm, rg);
+          return vmAttrs(vm, rg, {
+            networkInterfaceId,
+            privateIpAddress: nicPrivateIpAddress(nic as AzureResponse),
+            publicIpAddress: yield* resolvePublicIPAddress(news.publicIPAddress),
+            publicFqdn: yield* resolvePublicFqdn(news.publicIPAddress),
+          });
         }),
         delete: Effect.fnUntraced(function* ({ olds, output, session }) {
           if (olds?.delete === false) return;
@@ -2175,14 +2302,51 @@ export const VirtualMachineProvider = () =>
       });
     }),
   );
-function vmAttrs(vm: AzureResponse, resourceGroupName: string) {
+function resolvePublicIPAddressId(publicIPAddress: string | PublicIPAddress | undefined) {
+  if (!publicIPAddress) return Effect.succeed(undefined);
+  if (typeof publicIPAddress === "string") return Effect.succeed(publicIPAddress);
+  return resolveResourceValue(publicIPAddress.resourceId);
+}
+
+function resolvePublicIPAddress(publicIPAddress: string | PublicIPAddress | undefined) {
+  if (!publicIPAddress || typeof publicIPAddress === "string") return Effect.succeed(undefined);
+  return resolveResourceValue(publicIPAddress.ipAddress);
+}
+
+function resolvePublicFqdn(publicIPAddress: string | PublicIPAddress | undefined) {
+  if (!publicIPAddress || typeof publicIPAddress === "string") return Effect.succeed(undefined);
+  return resolveResourceValue(publicIPAddress.fqdn);
+}
+
+function resolveNetworkSecurityGroupId(networkSecurityGroup: string | NetworkSecurityGroup | undefined) {
+  if (!networkSecurityGroup) return Effect.succeed(undefined);
+  if (typeof networkSecurityGroup === "string") return Effect.succeed(networkSecurityGroup);
+  return resolveResourceValue(networkSecurityGroup.resourceId);
+}
+
+function nicPrivateIpAddress(nic: AzureResponse) {
+  const data = nic as Record<string, unknown>;
+  const configs = records(data.ipConfigurations);
+  return (configs[0] as Record<string, unknown> | undefined)?.privateIPAddress as string | undefined;
+}
+
+function vmAttrs(
+  vm: AzureResponse,
+  resourceGroupName: string,
+  extras: Partial<Pick<VirtualMachine["Attributes"], "networkInterfaceId" | "privateIpAddress" | "publicIpAddress" | "publicFqdn">> = {},
+) {
   const data = vm as Record<string, unknown>;
+  const networkProfile = data.networkProfile as { networkInterfaces?: Array<{ id?: string }> } | undefined;
   return {
     name: vm.name as string,
     resourceGroupName,
     location: vm.location as string,
     resourceId: vm.id as string,
     vmId: data.vmId as string | undefined,
+    networkInterfaceId: extras.networkInterfaceId ?? networkProfile?.networkInterfaces?.[0]?.id,
+    privateIpAddress: extras.privateIpAddress,
+    publicIpAddress: extras.publicIpAddress,
+    publicFqdn: extras.publicFqdn,
     provisioningState: vm.provisioningState,
     tags: vm.tags,
   } satisfies VirtualMachine["Attributes"];

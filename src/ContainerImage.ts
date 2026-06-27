@@ -4,8 +4,11 @@ import * as Redacted from "effect/Redacted";
 import { isResolved } from "alchemy/Diff";
 import { Resource } from "alchemy";
 import * as Provider from "alchemy/Provider";
+import { makeAzureClients } from "./Clients.ts";
+import type { AzureClientsShape } from "./Clients.ts";
 import { resolveResourceValue } from "./Internal.ts";
 import type { ContainerRegistry } from "./ContainerRegistry.ts";
+import { readRegistryAdminCredentials } from "./ContainerRegistry.ts";
 import type { Providers } from "./Providers.ts";
 
 export interface ContainerImageProps {
@@ -65,6 +68,7 @@ export const ContainerImageProvider = () =>
   Provider.effect(
     ContainerImage,
     Effect.gen(function* () {
+      const clients = yield* makeAzureClients;
       return ContainerImage.Provider.of({
         stables: ["image", "loginServer", "repository", "tag"],
         list: () => Effect.succeed([]),
@@ -82,7 +86,7 @@ export const ContainerImageProvider = () =>
         }),
         reconcile: Effect.fnUntraced(function* ({ id, news, session }) {
           const desired = yield* desiredImage(id, news);
-          const credentials = yield* registryCredentials(news);
+          const credentials = yield* registryCredentials(clients, news);
           if (credentials.username && credentials.password) {
             yield* session.note(`Logging in to Azure Container Registry: ${desired.loginServer}`);
             yield* run(
@@ -132,7 +136,7 @@ function registryLoginServer(registry: string | ContainerRegistry) {
   });
 }
 
-function registryCredentials(props: ContainerImageProps) {
+function registryCredentials(clients: AzureClientsShape, props: ContainerImageProps) {
   return Effect.gen(function* () {
     if (props.username && props.password) {
       return {
@@ -141,10 +145,13 @@ function registryCredentials(props: ContainerImageProps) {
           typeof props.password === "string" ? Redacted.make(props.password) : props.password,
       };
     }
-    if (typeof props.registry === "string") return {};
-    const username = yield* resolveResourceValue(props.registry.username);
-    const password = yield* resolveResourceValue(props.registry.password);
-    return { username, password };
+    if (typeof props.registry === "string") {
+      return { username: undefined, password: undefined as Redacted.Redacted<string> | undefined };
+    }
+    // Re-read admin credentials live from the registry's stable identity rather
+    // than dereferencing non-stable `username`/`password` off the reference,
+    // which are stripped on update under alchemy beta.58.
+    return yield* readRegistryAdminCredentials(clients, props.registry);
   });
 }
 
