@@ -50,8 +50,10 @@ jobs:
 
           if [[ "${VERSION}" == *-* ]]; then
             TAG="next"
+            RELEASE_FLAGS=(--prerelease)
           else
             TAG="latest"
+            RELEASE_FLAGS=()
           fi
 
           TARBALL=$(npm pack --json | node -e "let data=''; process.stdin.on('data', c => data += c); process.stdin.on('end', () => process.stdout.write(JSON.parse(data)[0].filename));")
@@ -60,7 +62,7 @@ jobs:
             echo "${PKG_NAME}@${VERSION} already published, skipping npm publish"
           else
             echo "Publishing tarball: ${TARBALL} with tag ${TAG}"
-            npm publish "${TARBALL}" --access public --tag "${TAG}"
+            npm publish "${TARBALL}" --access public --tag "${TAG}" --provenance
           fi
 
           if git ls-remote --exit-code --tags origin "refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
@@ -73,7 +75,7 @@ jobs:
           if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
             echo "Release ${TAG_NAME} already exists"
           else
-            gh release create "${TAG_NAME}" "${TARBALL}" --title "${PKG_NAME}@${VERSION}" --notes "Published ${PKG_NAME}@${VERSION} to npm with dist-tag ${TAG}." --verify-tag
+            gh release create "${TAG_NAME}" "${TARBALL}" --title "${PKG_NAME}@${VERSION}" --notes "Published ${PKG_NAME}@${VERSION} to npm with dist-tag ${TAG}." --verify-tag "${RELEASE_FLAGS[@]}"
           fi
           gh release view "${TAG_NAME}" --json tagName,isDraft,isPrerelease
 
