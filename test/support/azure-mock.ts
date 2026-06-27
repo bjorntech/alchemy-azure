@@ -200,18 +200,31 @@ export function installAzureMock(): AzureMock {
         },
         delete: async (rg: string, name: string) => del("storageAccounts", rg, name),
       },
+      // These methods intentionally dereference `this` (via `this._kind`) to mirror
+      // the real Azure SDK, whose operations read `this.client`. Detaching a method
+      // (e.g. `const write = blobContainers.create; write(...)`) loses the binding and
+      // throws, so the BlobContainer reconcile path must call them as methods. This
+      // guards against the regression where `blobContainers.update` was aliased and
+      // invoked unbound, breaking live `this.client` access.
       blobContainers: {
-        get: async (rg: string, account: string, name: string) =>
-          get("blobContainers", `${rg}/${account}`, name),
-        create: async (
+        _kind: "blobContainers" as const,
+        get(rg: string, account: string, name: string) {
+          return Promise.resolve(get(this._kind, `${rg}/${account}`, name));
+        },
+        create(
           rg: string,
           account: string,
           name: string,
           params: Record<string, unknown>,
-        ) => put("blobContainers", `${rg}/${account}`, name, params),
-        delete: async (rg: string, account: string, name: string) =>
-          del("blobContainers", `${rg}/${account}`, name),
-        list: async (rg: string, account: string) => listKind("blobContainers", `${rg}/${account}`),
+        ) {
+          return Promise.resolve(put(this._kind, `${rg}/${account}`, name, params));
+        },
+        delete(rg: string, account: string, name: string) {
+          return Promise.resolve(del(this._kind, `${rg}/${account}`, name));
+        },
+        list(rg: string, account: string) {
+          return Promise.resolve(listKind(this._kind, `${rg}/${account}`));
+        },
       },
     },
     msi: {
