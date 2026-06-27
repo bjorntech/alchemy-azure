@@ -4,6 +4,12 @@ All notable changes to `@bjorntech/alchemy-azure` are documented here. The forma
 
 ## [Unreleased]
 
+## [0.2.2-beta.59] - 2026-06-27
+
+### Changed
+
+- Updated compatibility target to `alchemy@2.0.0-beta.59`. Effect peer is unchanged (`>=4.0.0-beta.84`).
+
 ### Added
 
 - `VirtualMachine` can now wire its managed NIC to a public IP address and network security group, enable NIC IP forwarding, pass cloud-init/custom data, and return NIC/private/public address outputs. `VirtualNetwork` subnet outputs now include ARM IDs, and `subnetId(network, name)` resolves a named subnet for VM wiring.
