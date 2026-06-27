@@ -5,9 +5,10 @@ import { Unowned } from "alchemy/AdoptPolicy";
 import { isResolved } from "alchemy/Diff";
 import { Resource } from "alchemy";
 import * as Provider from "alchemy/Provider";
+import type { AzureClientsShape } from "./Clients.ts";
 import { makeAzureClients } from "./Clients.ts";
 import { azureError, isNotFound } from "./Errors.ts";
-import { collectAzurePages, diffValueEqual, makePhysicalNames, requireLocation, resourceGroupName } from "./Internal.ts";
+import { collectAzurePages, diffValueEqual, makePhysicalNames, persistedLocation, requireLocation, resolveResourceValue, resourceGroupName } from "./Internal.ts";
 import type { Providers } from "./Providers.ts";
 import type { ResourceGroup } from "./ResourceGroup.ts";
 import { hasAlchemyTags, withAlchemyTags } from "./ResourceGroup.ts";
@@ -110,7 +111,7 @@ export const ContainerRegistryProvider = () =>
           if (!output) return undefined;
           const name = registryName(id, instanceId, news.name);
           const groupName = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = persistedLocation(news.location, output.location);
           if (
             name !== output.name ||
             groupName !== output.resourceGroupName ||
@@ -149,7 +150,9 @@ export const ContainerRegistryProvider = () =>
           const name = registryName(id, instanceId, news.name);
           validateRegistryName(name);
           const groupName = yield* resourceGroupName(news.resourceGroup);
-          const location = yield* requireLocation(id, news.location, news.resourceGroup);
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : yield* requireLocation(id, news.location, news.resourceGroup);
           if (output && olds) {
             const existing = yield* Effect.tryPromise({
               try: () => clients.containerRegistry.registries.get(groupName, name),
@@ -222,6 +225,32 @@ export const ContainerRegistryProvider = () =>
       }
     }),
   );
+
+/**
+ * Re-read a registry's admin credentials live from its stable identity.
+ *
+ * `username`/`password` are secrets and not stable attributes, so a
+ * whole-resource registry reference no longer carries them on update (alchemy
+ * beta.58, #670). Consumers (ContainerImage, ContainerApp) must fetch them via
+ * the registry's stable `resourceGroupName` + `name` instead of dereferencing
+ * the reference, which would yield undefined credentials on every update.
+ */
+export function readRegistryAdminCredentials(clients: AzureClientsShape, registry: ContainerRegistry) {
+  return Effect.gen(function* () {
+    const resourceGroupName = yield* resolveResourceValue(registry.resourceGroupName);
+    const name = yield* resolveResourceValue(registry.name);
+    const credentials = yield* Effect.tryPromise({
+      try: () => clients.containerRegistry.registries.listCredentials(resourceGroupName, name),
+      catch: (cause) =>
+        azureError({ operation: "list Container Registry credentials", resource: name, cause }),
+    });
+    const password = credentials?.passwords?.find((item) => item.name === "password")?.value;
+    return {
+      username: credentials?.username,
+      password: password ? Redacted.make(password) : undefined,
+    };
+  });
+}
 
 function validateRegistryName(name: string) {
   if (!/^[a-z0-9]{5,50}$/.test(name)) {

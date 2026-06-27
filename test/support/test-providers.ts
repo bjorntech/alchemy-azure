@@ -55,6 +55,7 @@ import {
 } from "../../src/ResourceProviderRegistration.ts";
 import { ResourceGroup, ResourceGroupProvider } from "../../src/ResourceGroup.ts";
 import { StorageAccount, StorageAccountProvider } from "../../src/StorageAccount.ts";
+import { AzureOperationLockLive } from "../../src/OperationLock.ts";
 import { AzureClients, installAzureMock, type AzureMock } from "./azure-mock.ts";
 
 export const testProviders = () => {
@@ -119,6 +120,7 @@ export const testProviders = () => {
       ),
     ),
     Layer.provide(clientsLayer),
+    Layer.provide(AzureOperationLockLive),
     Layer.orDie,
   );
 

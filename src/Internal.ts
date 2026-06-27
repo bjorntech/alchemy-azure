@@ -137,6 +137,15 @@ export function resolveResourceValue<T>(value: T) {
   });
 }
 
+/**
+ * Derive a resource's location on the **create** path, where it is not yet
+ * persisted. Falls back to the referenced group's live location.
+ *
+ * Do not use on update: location is immutable, so an existing resource owns its
+ * location and must not re-read a sibling group's runtime attributes (which
+ * whole-resource references no longer expose for non-stable fields — alchemy
+ * beta.58, #670). Use {@link persistedLocation} instead.
+ */
 export const requireLocation = (
   id: string,
   location: string | undefined,
@@ -149,6 +158,14 @@ export const requireLocation = (
     }
     return resolved;
   });
+
+/**
+ * Resolve a resource's location on the **update** path from its own persisted
+ * state. An explicit prop wins (it forces a replace when changed); otherwise the
+ * immutable persisted value is authoritative. Never touches the group.
+ */
+export const persistedLocation = (location: string | undefined, output: string) =>
+  location ?? output;
 
 export async function collectAzurePages<T>(source: AsyncIterable<T> | Promise<{ value?: T[] }> | Promise<T[]>): Promise<T[]> {
   const resolved = await source;

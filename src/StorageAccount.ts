@@ -5,9 +5,10 @@ import { Unowned } from "alchemy/AdoptPolicy";
 import { isResolved } from "alchemy/Diff";
 import { Resource } from "alchemy";
 import * as Provider from "alchemy/Provider";
+import type { AzureClientsShape } from "./Clients.ts";
 import { makeAzureClients } from "./Clients.ts";
 import { azureError, isNotFound } from "./Errors.ts";
-import { collectAzurePages, diffValueEqual, makePhysicalNames, resolveResourceValue } from "./Internal.ts";
+import { collectAzurePages, diffValueEqual, makePhysicalNames, persistedLocation, resolveResourceValue } from "./Internal.ts";
 import type { Providers } from "./Providers.ts";
 import type { ResourceGroup } from "./ResourceGroup.ts";
 import { hasAlchemyTags, withAlchemyTags } from "./ResourceGroup.ts";
@@ -132,7 +133,7 @@ export const StorageAccountProvider = () =>
           const name = storageAccountName(id, instanceId, news.name);
           const oldName = output.name;
           const resourceGroupName = yield* getResourceGroupName(news.resourceGroup);
-          const location = news.location ?? (yield* getResourceGroupLocation(news.resourceGroup));
+          const location = persistedLocation(news.location, output.location);
           if (
             name !== oldName ||
             resourceGroupName !== output.resourceGroupName ||
@@ -179,7 +180,11 @@ export const StorageAccountProvider = () =>
           const name = storageAccountName(id, instanceId, news.name);
           validateStorageAccountName(name);
           const resourceGroupName = yield* getResourceGroupName(news.resourceGroup);
-          const location = news.location ?? (yield* getResourceGroupLocation(news.resourceGroup));
+          // On update the resource owns its (immutable) location; only derive
+          // from the group reference on create, where nothing is persisted yet.
+          const location = output
+            ? persistedLocation(news.location, output.location)
+            : news.location ?? (yield* getResourceGroupLocation(news.resourceGroup));
           if (!location) {
             throw new Error(
               `StorageAccount "${id}" requires location when resourceGroup is a string.`,
@@ -264,6 +269,31 @@ export function getResourceGroupName(resourceGroup: string | ResourceGroup) {
   return Effect.gen(function* () {
     if (typeof resourceGroup === "string") return resourceGroup;
     return yield* resolveResourceValue(resourceGroup.name);
+  });
+}
+
+/**
+ * Re-read a storage account's primary connection string live from its stable
+ * identity (`resourceGroupName` + `name`).
+ *
+ * `primaryConnectionString` is a secret and not a stable attribute, so a
+ * whole-resource storage account reference no longer carries it on update
+ * (alchemy beta.58, #670). Consumers (e.g. FunctionApp `AzureWebJobsStorage`)
+ * must fetch it via the stable identity instead of dereferencing the reference.
+ */
+export function readStorageConnectionString(clients: AzureClientsShape, storageAccount: StorageAccount) {
+  return Effect.gen(function* () {
+    const resourceGroupName = yield* resolveResourceValue(storageAccount.resourceGroupName);
+    const name = yield* resolveResourceValue(storageAccount.name);
+    const keys = yield* Effect.tryPromise({
+      try: () => clients.storage.storageAccounts.listKeys(resourceGroupName, name),
+      catch: (cause) => azureError({ operation: "list storage account keys", resource: name, cause }),
+    });
+    const primaryAccessKey = keys?.keys?.[0]?.value;
+    if (!primaryAccessKey) {
+      throw new Error(`Storage account "${name}" returned no access keys for its connection string.`);
+    }
+    return `DefaultEndpointsProtocol=https;AccountName=${name};AccountKey=${primaryAccessKey};EndpointSuffix=core.windows.net`;
   });
 }
 

@@ -41,7 +41,10 @@ const directProviderLayer = Layer.mergeAll(
   Azure.ContainerImageProvider(),
   Azure.ContainerAppProvider(),
   Azure.VirtualMachineProvider(),
-).pipe(Layer.provide(Layer.succeed(Azure.AzureClients, Azure.AzureClients.of(mock.clients))));
+).pipe(
+  Layer.provide(Layer.succeed(Azure.AzureClients, Azure.AzureClients.of(mock.clients))),
+  Layer.provide(Azure.AzureOperationLockLive),
+);
 
 beforeEach(() => {
   mock.records.clear();
@@ -178,6 +181,25 @@ describe("StorageAccount provider", () => {
       expect(redeployed.storageAccountId).toBe(created.storageAccountId);
       expect(calls("storageAccounts.delete:retainstore001")).toHaveLength(0);
       expect(calls("storageAccounts.get:retainstore001").length).toBeGreaterThan(0);
+    }),
+  );
+
+  test.provider("resolves storage account location from persisted state on update", (stack) =>
+    Effect.gen(function* () {
+      // StorageAccount has its own group-location derivation; this guards the
+      // same beta.58 regression as the location helper migration: omitting
+      // location on update must fall back to the persisted value, not throw.
+      const base = { name: "locstore0001", resourceGroup: "rg-test" };
+
+      yield* stack.deploy(
+        Azure.StorageAccount("Store", { ...base, location: "westeurope", tags: { phase: "create" } }),
+      );
+      const updated = yield* stack.deploy(
+        Azure.StorageAccount("Store", { ...base, tags: { phase: "update" } }),
+      );
+
+      expect(updated.location).toBe("westeurope");
+      expect(called("storageAccounts.delete")).toBe(false);
     }),
   );
 
@@ -333,6 +355,29 @@ describe("Network resource providers", () => {
 
       yield* stack.destroy();
       expect(called("userAssignedIdentities.delete")).toBe(true);
+    }),
+  );
+
+  test.provider("resolves location from persisted state when omitted on update", (stack) =>
+    Effect.gen(function* () {
+      // Regression for the beta.58 whole-resource reference change: on update a
+      // referenced group no longer exposes its (non-stable) location, so a
+      // resource that derives location from the group must fall back to its own
+      // persisted location instead of throwing "requires location". A string
+      // resourceGroup carries no location, so omitting location on the second
+      // deploy reproduces the stripped-attribute condition deterministically.
+      const base = { name: "loc-identity", resourceGroup: "rg-test" };
+
+      yield* stack.deploy(
+        Azure.UserAssignedIdentity("Id", { ...base, location: "westeurope", tags: { phase: "create" } }),
+      );
+      const updated = yield* stack.deploy(
+        Azure.UserAssignedIdentity("Id", { ...base, tags: { phase: "update" } }),
+      );
+
+      expect(updated.location).toBe("westeurope");
+      expect(calls("userAssignedIdentities.put:loc-identity")).toHaveLength(2);
+      expect(called("userAssignedIdentities.delete")).toBe(false);
     }),
   );
 
@@ -645,6 +690,47 @@ describe("Compute + hosting providers", () => {
     }),
   );
 
+  test.provider("re-reads the storage connection string on Function App update", (stack) =>
+    Effect.gen(function* () {
+      // Regression: FunctionApp sets AzureWebJobsStorage from the storage
+      // account's non-stable connection string. A whole-resource reference no
+      // longer carries it on update (beta.58), so it must be re-read live from
+      // the account's stable identity instead of throwing / dropping the setting.
+      const program = (phase: string) =>
+        Effect.gen(function* () {
+          const plan = yield* Azure.AppServicePlan("Plan", {
+            name: "fnplan001",
+            resourceGroup: "rg-test",
+            location: "westeurope",
+            sku: "B1",
+          });
+          const storage = yield* Azure.StorageAccount("FnStorage", {
+            name: "fnstorageupd01",
+            resourceGroup: "rg-test",
+            location: "westeurope",
+          });
+          return yield* Azure.FunctionApp("Fn", {
+            name: "fn-conn-app",
+            resourceGroup: "rg-test",
+            location: "westeurope",
+            serverFarmId: plan,
+            storageAccount: storage,
+            appSettings: { PHASE: phase },
+          });
+        });
+
+      yield* stack.deploy(program("create"));
+      yield* stack.deploy(program("update"));
+
+      expect(calls("webApps.put:fn-conn-app")).toHaveLength(2);
+      // In-place update, not replace: a referenced serverFarmId/storageAccount
+      // must resolve to a stable scalar in the diff, not force a replace.
+      expect(called("webApps.delete")).toBe(false);
+      // listKeys must be called on update too, proving the live re-read.
+      expect(calls("storageAccounts.listKeys:fnstorageupd01").length).toBeGreaterThanOrEqual(2);
+    }),
+  );
+
   test.provider("creates a Static Web App and applies app settings", (stack) =>
     Effect.gen(function* () {
       const swa = yield* stack.deploy(
@@ -879,6 +965,50 @@ describe("Container Apps providers", () => {
       yield* stack.deploy(Azure.ContainerApp("App", { ...base, env: { PHASE: "update" } }));
 
       expect(calls("containerApps.put:runtime-app")).toHaveLength(2);
+    }),
+  );
+
+  test.provider("re-reads registry credentials on update for a referenced registry", (stack) =>
+    Effect.gen(function* () {
+      // Regression for issue #2.2: a whole-resource registry reference no longer
+      // carries non-stable `username`/`password` on update. The Container App
+      // must re-read admin credentials live (listCredentials) so the image pull
+      // secret survives updates instead of silently dropping to no-auth.
+      const program = (phase: string) =>
+        Effect.gen(function* () {
+          const registry = yield* Azure.ContainerRegistry("Registry", {
+            name: "appregistry01",
+            resourceGroup: "rg-test",
+            location: "westeurope",
+          });
+          return yield* Azure.ContainerApp("App", {
+            name: "registry-app",
+            resourceGroup: "rg-test",
+            location: "westeurope",
+            environment:
+              "/subscriptions/sub/resourceGroups/rg-test/providers/Microsoft.App/managedEnvironments/env",
+            image: "appregistry01.azurecr.io/api:latest",
+            registry,
+            targetPort: 8080,
+            env: { PHASE: phase },
+          });
+        });
+
+      yield* stack.deploy(program("create"));
+      yield* stack.deploy(program("update"));
+
+      const record = mock.records.get(recordKey("containerApps", "rg-test", "registry-app"))!;
+      const configuration = record.configuration as {
+        secrets?: Array<{ name: string; value: string }>;
+        registries?: Array<{ server: string; username: string; passwordSecretRef: string }>;
+      };
+      expect(calls("containerApps.put:registry-app")).toHaveLength(2);
+      // Pull secret + registry auth present after the update — only possible if
+      // credentials were re-read live rather than taken from the reference.
+      expect(configuration.secrets).toContainEqual({ name: "registry-password", value: "registry-password" });
+      expect(configuration.registries?.[0]?.username).toBe("registryadmin");
+      expect(configuration.registries?.[0]?.server).toBe("appregistry01.azurecr.io");
+      expect(calls("registries.listCredentials:appregistry01").length).toBeGreaterThanOrEqual(2);
     }),
   );
 

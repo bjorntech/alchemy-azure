@@ -81,7 +81,7 @@ export const ResourceGroupProvider = () =>
       };
 
       return ResourceGroup.Provider.of({
-        stables: ["name", "resourceGroupId"],
+        stables: ["name", "location", "resourceGroupId"],
         list: () =>
           Effect.tryPromise({
             try: () => collectAzurePages(clients.resources.resourceGroups.list()),

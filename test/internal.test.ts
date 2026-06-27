@@ -3,6 +3,7 @@ import { Stack, Stage } from "alchemy";
 import * as Effect from "effect/Effect";
 import {
   makePhysicalNames,
+  persistedLocation,
   requireLocation,
   resourceGroupLocation,
   resourceGroupName,
@@ -46,6 +47,18 @@ describe("internal resource helpers", () => {
     const location = await runNoContext(requireLocation("App", "westeurope", "rg-prod"));
 
     expect(location).toBe("westeurope");
+  });
+
+  test("persistedLocation falls back to the resource's own location on update", () => {
+    // On update the referenced group's live location may be gone (alchemy
+    // beta.58 strips non-stable whole-resource attributes), so the resource
+    // must use its persisted location instead of re-deriving from the group.
+    expect(persistedLocation(undefined, "westeurope")).toBe("westeurope");
+  });
+
+  test("persistedLocation lets an explicit location override the persisted one", () => {
+    // An explicit change forces a replace upstream; the new value must win.
+    expect(persistedLocation("eastus", "westeurope")).toBe("eastus");
   });
 });
 
