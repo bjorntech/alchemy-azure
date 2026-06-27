@@ -4,6 +4,7 @@ import * as Schedule from "effect/Schedule";
 import { Unowned } from "alchemy/AdoptPolicy";
 import { isResolved } from "alchemy/Diff";
 import type { Input } from "alchemy/Input";
+import * as Output from "alchemy/Output";
 import { Resource, type ResourceClass } from "alchemy";
 import * as Provider from "alchemy/Provider";
 import type { AzureClientsShape } from "./Clients.ts";
@@ -411,7 +412,7 @@ export type VirtualNetwork = Resource<
   VirtualNetworkProps,
   Attrs<{
     addressSpace: string[];
-    subnets: NonNullable<VirtualNetworkProps["subnets"]>;
+    subnets: Array<NonNullable<VirtualNetworkProps["subnets"]>[number] & { id: string }>;
     dnsServers?: string[];
   }>,
   never,
@@ -511,12 +512,24 @@ function virtualNetworkAttrs(vnet: AzureResponse, resourceGroupName: string) {
     addressSpace: addressSpace?.addressPrefixes ?? [],
     subnets: records(data.subnets).map((s) => ({
       name: s.name as string,
+      id: s.id as string,
       addressPrefix: (s as Record<string, unknown>).addressPrefix as string,
     })),
     dnsServers: dhcpOptions?.dnsServers,
     provisioningState: vnet.provisioningState,
     tags: vnet.tags,
   } satisfies VirtualNetwork["Attributes"];
+}
+
+/** Resolve a named subnet ARM id from a VirtualNetwork output. */
+export function subnetId(network: VirtualNetwork, name: string) {
+  return Output.map(network.subnets, (subnets) => {
+    const subnet = subnets.find((item) => item.name === name);
+    if (!subnet) {
+      throw new Error(`Virtual network has no subnet named "${name}".`);
+    }
+    return subnet.id;
+  });
 }
 
 export interface SecurityRule {
@@ -2092,11 +2105,25 @@ export interface VirtualMachineProps extends BaseProps {
   vmSize?: string;
   image?: { publisher: string; offer: string; sku: string; version?: string };
   subnetId?: string;
+  /** Public IP object or ARM id to attach to the VM's managed NIC. */
+  publicIPAddress?: string | PublicIPAddress;
+  /** Network Security Group object or ARM id to attach to the VM's managed NIC. */
+  networkSecurityGroup?: string | NetworkSecurityGroup;
+  /** Enable IP forwarding on the VM's managed NIC. Useful for SIP/RTP gateways. */
+  enableIPForwarding?: boolean;
+  /** Cloud-init/custom data. Plain text is accepted and base64-encoded for Azure. */
+  customData?: string;
 }
 export type VirtualMachine = Resource<
   "Azure.VirtualMachine",
   VirtualMachineProps,
-  Attrs<{ vmId?: string; privateIpAddress?: string }>,
+  Attrs<{
+    vmId?: string;
+    networkInterfaceId?: string;
+    privateIpAddress?: string;
+    publicIpAddress?: string;
+    publicFqdn?: string;
+  }>,
   never,
   Providers
 >;
@@ -2119,20 +2146,27 @@ export const VirtualMachineProvider = () =>
           ),
         diff: diffOnChanges({
           identity: resourceGroupIdentity(nameOf),
-          replace: (props) => ({
-            adminUsername: props.adminUsername,
-            adminPassword: props.adminPassword,
-            sshPublicKey: props.sshPublicKey,
-            image: props.image ?? {
-              publisher: "Canonical",
-              offer: "0001-com-ubuntu-server-jammy",
-              sku: "22_04-lts",
-              version: "latest",
-            },
-            subnetId: props.subnetId,
-          }),
+          replace: (props) =>
+            Effect.gen(function* () {
+              return {
+                adminUsername: props.adminUsername,
+                adminPassword: props.adminPassword,
+                sshPublicKey: props.sshPublicKey,
+                customData: props.customData,
+                image: props.image ?? {
+                  publisher: "Canonical",
+                  offer: "0001-com-ubuntu-server-jammy",
+                  sku: "22_04-lts",
+                  version: "latest",
+                },
+                subnetId: props.subnetId,
+                publicIPAddressId: yield* resolvePublicIPAddressId(props.publicIPAddress),
+                networkSecurityGroupId: yield* resolveNetworkSecurityGroupId(props.networkSecurityGroup),
+              };
+            }),
           mutable: (props) => ({
             vmSize: props.vmSize ?? "Standard_B1s",
+            enableIPForwarding: props.enableIPForwarding ?? false,
             tags: props.tags,
           }),
         }),
@@ -2155,16 +2189,22 @@ export const VirtualMachineProvider = () =>
             : yield* requireLocation(id, news.location, news.resourceGroup);
           const name = nameOf(id, instanceId, news);
           const nicName = `${name}-nic`;
+          const networkInterfaceId = `/subscriptions/${clients.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Network/networkInterfaces/${nicName}`;
+          const publicIPAddressId = yield* resolvePublicIPAddressId(news.publicIPAddress);
+          const networkSecurityGroupId = yield* resolveNetworkSecurityGroupId(news.networkSecurityGroup);
           yield* ensureTaggedOwnership(id, "virtual machine", name, output, olds, () =>
             clients.compute.virtualMachines.get(rg, name)
           );
-          yield* azurePromise("reconcile virtual machine network interface", nicName, () =>
+          const nic = yield* azurePromise("reconcile virtual machine network interface", nicName, () =>
             clients.network.networkInterfaces.beginCreateOrUpdateAndWait(rg, nicName, {
               location,
+              enableIPForwarding: news.enableIPForwarding ?? false,
+              networkSecurityGroup: networkSecurityGroupId ? { id: networkSecurityGroupId } : undefined,
               ipConfigurations: [
                 {
                   name: "ipconfig1",
                   subnet: { id: news.subnetId },
+                  publicIPAddress: publicIPAddressId ? { id: publicIPAddressId } : undefined,
                   privateIPAllocationMethod: "Dynamic",
                 },
               ],
@@ -2191,8 +2231,11 @@ export const VirtualMachineProvider = () =>
                   typeof news.adminPassword === "string"
                     ? news.adminPassword
                     : news.adminPassword
-                      ? Redacted.value(news.adminPassword)
+                  ? Redacted.value(news.adminPassword)
                       : undefined,
+                customData: news.customData
+                  ? Buffer.from(news.customData, "utf8").toString("base64")
+                  : undefined,
                 linuxConfiguration: news.sshPublicKey
                   ? {
                       disablePasswordAuthentication: true,
@@ -2210,14 +2253,19 @@ export const VirtualMachineProvider = () =>
               networkProfile: {
                 networkInterfaces: [
                   {
-                    id: `/subscriptions/${clients.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Network/networkInterfaces/${nicName}`,
+                    id: networkInterfaceId,
                   },
                 ],
               },
               tags: withAlchemyTags(id, news.tags),
             } as Parameters<typeof clients.compute.virtualMachines.beginCreateOrUpdateAndWait>[2]),
           ).pipe(withHeartbeat(`virtual machine "${name}"`));
-          return vmAttrs(vm, rg);
+          return vmAttrs(vm, rg, {
+            networkInterfaceId,
+            privateIpAddress: nicPrivateIpAddress(nic as AzureResponse),
+            publicIpAddress: yield* resolvePublicIPAddress(news.publicIPAddress),
+            publicFqdn: yield* resolvePublicFqdn(news.publicIPAddress),
+          });
         }),
         delete: Effect.fnUntraced(function* ({ olds, output, session }) {
           if (olds?.delete === false) return;
@@ -2254,14 +2302,51 @@ export const VirtualMachineProvider = () =>
       });
     }),
   );
-function vmAttrs(vm: AzureResponse, resourceGroupName: string) {
+function resolvePublicIPAddressId(publicIPAddress: string | PublicIPAddress | undefined) {
+  if (!publicIPAddress) return Effect.succeed(undefined);
+  if (typeof publicIPAddress === "string") return Effect.succeed(publicIPAddress);
+  return resolveResourceValue(publicIPAddress.resourceId);
+}
+
+function resolvePublicIPAddress(publicIPAddress: string | PublicIPAddress | undefined) {
+  if (!publicIPAddress || typeof publicIPAddress === "string") return Effect.succeed(undefined);
+  return resolveResourceValue(publicIPAddress.ipAddress);
+}
+
+function resolvePublicFqdn(publicIPAddress: string | PublicIPAddress | undefined) {
+  if (!publicIPAddress || typeof publicIPAddress === "string") return Effect.succeed(undefined);
+  return resolveResourceValue(publicIPAddress.fqdn);
+}
+
+function resolveNetworkSecurityGroupId(networkSecurityGroup: string | NetworkSecurityGroup | undefined) {
+  if (!networkSecurityGroup) return Effect.succeed(undefined);
+  if (typeof networkSecurityGroup === "string") return Effect.succeed(networkSecurityGroup);
+  return resolveResourceValue(networkSecurityGroup.resourceId);
+}
+
+function nicPrivateIpAddress(nic: AzureResponse) {
+  const data = nic as Record<string, unknown>;
+  const configs = records(data.ipConfigurations);
+  return (configs[0] as Record<string, unknown> | undefined)?.privateIPAddress as string | undefined;
+}
+
+function vmAttrs(
+  vm: AzureResponse,
+  resourceGroupName: string,
+  extras: Partial<Pick<VirtualMachine["Attributes"], "networkInterfaceId" | "privateIpAddress" | "publicIpAddress" | "publicFqdn">> = {},
+) {
   const data = vm as Record<string, unknown>;
+  const networkProfile = data.networkProfile as { networkInterfaces?: Array<{ id?: string }> } | undefined;
   return {
     name: vm.name as string,
     resourceGroupName,
     location: vm.location as string,
     resourceId: vm.id as string,
     vmId: data.vmId as string | undefined,
+    networkInterfaceId: extras.networkInterfaceId ?? networkProfile?.networkInterfaces?.[0]?.id,
+    privateIpAddress: extras.privateIpAddress,
+    publicIpAddress: extras.publicIpAddress,
+    publicFqdn: extras.publicFqdn,
     provisioningState: vm.provisioningState,
     tags: vm.tags,
   } satisfies VirtualMachine["Attributes"];

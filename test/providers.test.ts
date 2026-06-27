@@ -389,6 +389,8 @@ describe("Network resource providers", () => {
 
       expect(vnet.addressSpace).toEqual(["10.0.0.0/16"]);
       expect(vnet.subnets[0]?.name).toBe("default");
+      expect(vnet.subnets[0]?.id).toContain("/virtualNetworks/");
+      expect(vnet.subnets[0]?.id).toContain("/subnets/default");
       expect(vnet.subnets[0]?.addressPrefix).toBe("10.0.0.0/24");
 
       yield* stack.destroy();
@@ -789,17 +791,61 @@ describe("Compute + hosting providers", () => {
   test.provider("creates a virtual machine and its NIC", (stack) =>
     Effect.gen(function* () {
       const vm = yield* stack.deploy(
-        Azure.VirtualMachine("Vm", {
-          resourceGroup: "rg-test",
-          location: "westeurope",
-          adminUsername: "azureuser",
-          adminPassword: Redacted.make("S3cret-pass!"),
-          subnetId:
-            "/subscriptions/sub/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet/subnets/default",
+        Effect.gen(function* () {
+          const network = yield* Azure.VirtualNetwork("Net", {
+            resourceGroup: "rg-test",
+            location: "westeurope",
+            addressSpace: ["10.42.0.0/16"],
+            subnets: [{ name: "sip", addressPrefix: "10.42.1.0/24" }],
+          });
+          const publicIp = yield* Azure.PublicIPAddress("GatewayIp", {
+            resourceGroup: "rg-test",
+            location: "westeurope",
+            sku: "Standard",
+            allocationMethod: "Static",
+            domainNameLabel: "gateway-test",
+          });
+          const nsg = yield* Azure.NetworkSecurityGroup("GatewayNsg", {
+            resourceGroup: "rg-test",
+            location: "westeurope",
+            securityRules: [
+              {
+                name: "allow-sip-udp",
+                priority: 100,
+                direction: "Inbound",
+                access: "Allow",
+                protocol: "Udp",
+                destinationPortRange: "5060",
+              },
+            ],
+          });
+          return yield* Azure.VirtualMachine("Vm", {
+            resourceGroup: "rg-test",
+            location: "westeurope",
+            adminUsername: "azureuser",
+            adminPassword: Redacted.make("S3cret-pass!"),
+            subnetId: Azure.subnetId(network, "sip"),
+            publicIPAddress: publicIp,
+            networkSecurityGroup: nsg,
+            enableIPForwarding: true,
+            customData: "#cloud-config\npackages:\n  - docker.io\n",
+          });
         }),
       );
       expect(vm.vmId).toBeDefined();
+      expect(vm.networkInterfaceId).toContain("/networkInterfaces/");
+      expect(vm.privateIpAddress).toBe("10.0.0.4");
+      expect(vm.publicIpAddress).toBe("20.0.0.1");
+      expect(vm.publicFqdn).toBe("gateway-test.westeurope.cloudapp.azure.com");
       expect(called("networkInterfaces.put")).toBe(true);
+      const nic = mock.records.get(recordKey("networkInterfaces", "rg-test", `${vm.name}-nic`))!;
+      expect(nic.enableIPForwarding).toBe(true);
+      expect((nic.networkSecurityGroup as { id: string }).id).toContain("/networkSecurityGroups/");
+      const ipConfig = (nic.ipConfigurations as Array<{ publicIPAddress?: { id: string } }>)[0];
+      expect(ipConfig?.publicIPAddress?.id).toContain("/publicIPAddresses/");
+      const vmRecord = mock.records.get(recordKey("virtualMachines", "rg-test", vm.name))!;
+      const osProfile = vmRecord.osProfile as { customData?: string };
+      expect(Buffer.from(osProfile.customData!, "base64").toString("utf8")).toContain("docker.io");
 
       yield* stack.destroy();
       expect(called("virtualMachines.delete")).toBe(true);

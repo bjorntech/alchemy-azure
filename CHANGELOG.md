@@ -4,6 +4,10 @@ All notable changes to `@bjorntech/alchemy-azure` are documented here. The forma
 
 ## [Unreleased]
 
+### Added
+
+- `VirtualMachine` can now wire its managed NIC to a public IP address and network security group, enable NIC IP forwarding, pass cloud-init/custom data, and return NIC/private/public address outputs. `VirtualNetwork` subnet outputs now include ARM IDs, and `subnetId(network, name)` resolves a named subnet for VM wiring.
+
 ## [0.2.1-beta.58] - 2026-06-27
 
 ### Changed
