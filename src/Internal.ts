@@ -1,7 +1,41 @@
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Redacted from "effect/Redacted";
 import { Stack, Stage } from "alchemy";
 import type { ResourceGroup } from "./ResourceGroup.ts";
+
+/**
+ * Emit a periodic "sign of life" heartbeat to stderr while a long-running effect
+ * is in flight, so operators are not left staring at a silent console during slow
+ * Azure provisioning (Container App environments, Cosmos DB, SQL, VMs, etc.).
+ *
+ * Nothing is logged when the wrapped effect settles before the first interval, so
+ * fast paths and the in-memory test mock stay quiet. Apply this selectively to the
+ * genuinely slow resources only — do not blanket-wrap every Azure call.
+ *
+ * @example
+ * ```ts
+ * yield* Effect.tryPromise({ try, catch }).pipe(
+ *   withHeartbeat(`Container Apps managed environment "${name}"`),
+ * );
+ * ```
+ */
+export const withHeartbeat =
+  (label: string, interval: Duration.Input = Duration.seconds(60)) =>
+  <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    Effect.gen(function* () {
+      const start = Date.now();
+      const tick = Effect.sync(() => {
+        const seconds = Math.round((Date.now() - start) / 1000);
+        console.error(`[azure] still working on ${label} (${seconds}s elapsed)…`);
+      }).pipe(Effect.delay(interval), Effect.forever);
+      // Fork the heartbeat loop as a child fiber and guarantee it is interrupted as
+      // soon as the operation settles (success, failure, or interruption), so no
+      // timer leaks and the console goes quiet the moment work completes.
+      const fiber = yield* tick.pipe(Effect.forkChild);
+      return yield* self.pipe(Effect.ensuring(Fiber.interrupt(fiber)));
+    });
 
 export type NamedResourceGroup = string | ResourceGroup;
 

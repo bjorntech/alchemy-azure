@@ -14,6 +14,7 @@ import {
   requireLocation,
   resourceGroupName,
   resolveResourceValue,
+  withHeartbeat,
   type NamedResourceGroup,
 } from "./Internal.ts";
 import type { Providers } from "./Providers.ts";
@@ -118,7 +119,14 @@ function azurePromise<A>(operation: string, resource: string | undefined, try_: 
   });
 }
 
-function deleteIfEnabled(operation: () => Promise<unknown>, name: string, kind: string) {
+function deleteIfEnabled(
+  operation: () => Promise<unknown>,
+  name: string,
+  kind: string,
+  // Provide a label only for genuinely slow deletes; omitting it keeps fast
+  // deletes quiet so the console is not spammed.
+  heartbeatLabel?: string,
+) {
   return Effect.fnUntraced(function* (input: {
     olds?: { delete?: boolean };
     session: { note: (message: string) => Effect.Effect<unknown, unknown, never> };
@@ -126,7 +134,8 @@ function deleteIfEnabled(operation: () => Promise<unknown>, name: string, kind: 
     const { olds, session } = input;
     if (olds?.delete === false) return;
     yield* session.note(`Deleting Azure ${kind}: ${name}`);
-    yield* azurePromise(`delete ${kind}`, name, operation).pipe(
+    const deletion = azurePromise(`delete ${kind}`, name, operation);
+    yield* (heartbeatLabel ? deletion.pipe(withHeartbeat(heartbeatLabel)) : deletion).pipe(
       Effect.catchIf(isNotFound, () => Effect.void),
     );
   });
@@ -1080,7 +1089,7 @@ export const CosmosDBAccountProvider = () =>
             } as Parameters<typeof clients.cosmosDB.databaseAccounts.beginCreateOrUpdate>[2]);
             await poller.pollUntilFinished();
             return clients.cosmosDB.databaseAccounts.get(rg, name);
-          });
+          }).pipe(withHeartbeat(`Cosmos DB account "${name}"`));
           return yield* cosmosAttrs(account, rg);
         }),
         delete: Effect.fnUntraced(function* ({ olds, output, session }) {
@@ -1094,6 +1103,7 @@ export const CosmosDBAccountProvider = () =>
             },
             output.name,
             "Cosmos DB account",
+            `deleting Cosmos DB account "${output.name}"`,
           )({ olds, session });
         }),
       });
@@ -1198,7 +1208,7 @@ export const SqlServerProvider = () =>
               publicNetworkAccess: news.publicNetworkAccess === false ? "Disabled" : "Enabled",
               tags: withAlchemyTags(id, news.tags),
             } as Parameters<typeof clients.sql.servers.beginCreateOrUpdateAndWait>[2]),
-          );
+          ).pipe(withHeartbeat(`SQL server "${name}"`));
           return sqlServerAttrs(server, rg, news.administratorLogin);
         }),
         delete: Effect.fnUntraced(function* ({ olds, output, session }) {
@@ -2127,7 +2137,7 @@ export const VirtualMachineProvider = () =>
               },
               tags: withAlchemyTags(id, news.tags),
             } as Parameters<typeof clients.compute.virtualMachines.beginCreateOrUpdateAndWait>[2]),
-          );
+          ).pipe(withHeartbeat(`virtual machine "${name}"`));
           return vmAttrs(vm, rg);
         }),
         delete: Effect.fnUntraced(function* ({ olds, output, session }) {
@@ -2136,7 +2146,10 @@ export const VirtualMachineProvider = () =>
           yield* session.note(`Deleting Azure virtual machine: ${output.name}`);
           yield* azurePromise("delete virtual machine", output.name, () =>
             clients.compute.virtualMachines.beginDeleteAndWait(output.resourceGroupName, output.name),
-          ).pipe(Effect.catchIf(isNotFound, () => Effect.void));
+          ).pipe(
+            withHeartbeat(`deleting virtual machine "${output.name}"`),
+            Effect.catchIf(isNotFound, () => Effect.void),
+          );
           yield* waitForAzureDeleted(
             () => clients.compute.virtualMachines.get(output.resourceGroupName, output.name),
             output.name,

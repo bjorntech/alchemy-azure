@@ -4,6 +4,24 @@ All notable changes to `@bjorntech/alchemy-azure` are documented here. The forma
 
 ## [Unreleased]
 
+## [0.2.0-beta.57] - 2026-06-27
+
+### Added
+
+- Long-running "sign of life" heartbeat: the slowest resources now log a progress
+  message to stderr every 60 seconds while an operation is in flight, so slow Azure
+  provisioning and teardown no longer look like a hung process. Applied selectively to
+  Container Apps managed environment, Container App, Cosmos DB account, SQL server, and
+  virtual machine create/delete paths; fast resources stay quiet.
+
+### Fixed
+
+- Blob container create/update no longer fails at runtime with
+  `undefined is not an object (evaluating 'this.client')`. The reconcile path aliased
+  the Azure SDK method and invoked it unbound, detaching `this`; it now calls
+  `blobContainers.create` (an idempotent create-or-update PUT) directly so the SDK
+  method keeps its binding.
+
 ## [0.1.1-beta.57] - 2026-06-26
 
 ### Fixed

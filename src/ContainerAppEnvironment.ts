@@ -6,7 +6,7 @@ import { Resource } from "alchemy";
 import * as Provider from "alchemy/Provider";
 import { makeAzureClients } from "./Clients.ts";
 import { azureError, isNotFound } from "./Errors.ts";
-import { collectAzurePages, diffValueEqual, makePhysicalNames, requireLocation, resourceGroupName, resolveResourceValue } from "./Internal.ts";
+import { collectAzurePages, diffValueEqual, makePhysicalNames, requireLocation, resourceGroupName, resolveResourceValue, withHeartbeat } from "./Internal.ts";
 import type { Providers } from "./Providers.ts";
 import type { ResourceProviderRegistration } from "./ResourceProviderRegistration.ts";
 import type { ResourceGroup } from "./ResourceGroup.ts";
@@ -203,7 +203,7 @@ export const ContainerAppEnvironmentProvider = () =>
                 resource: name,
                 cause,
               }),
-          });
+          }).pipe(withHeartbeat(`Container Apps managed environment "${name}"`));
           return toAttributes(environment, groupName);
         }),
         delete: Effect.fnUntraced(function* ({ olds, output, session }) {
@@ -216,7 +216,10 @@ export const ContainerAppEnvironmentProvider = () =>
             ),
             catch: (cause) =>
               azureError({ operation: "delete Container Apps managed environment", resource: output.name, cause }),
-          }).pipe(Effect.catchIf(isNotFound, () => Effect.void));
+          }).pipe(
+            withHeartbeat(`deleting Container Apps managed environment "${output.name}"`),
+            Effect.catchIf(isNotFound, () => Effect.void),
+          );
         }),
       });
     }),

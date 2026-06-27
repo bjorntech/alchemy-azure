@@ -189,9 +189,6 @@ export const BlobContainerProvider = () =>
               throw new Error(`Cannot adopt resource "${name}" without --adopt.`);
             }
           }
-          const blobContainers = clients.storage.blobContainers as typeof clients.storage.blobContainers & {
-            update?: typeof clients.storage.blobContainers.create;
-          };
           const params = {
             publicAccess: news.publicAccess ?? "None",
             metadata: {
@@ -199,16 +196,17 @@ export const BlobContainerProvider = () =>
               [ALCHEMY_METADATA_ID]: id,
             },
           } as Parameters<typeof clients.storage.blobContainers.create>[3];
+          // `blobContainers.create` is an idempotent PUT (create-or-update). Call it
+          // directly on the client so the SDK method keeps its `this` binding; aliasing
+          // it to a local variable detaches `this` and breaks `this.client` at runtime.
           const container = yield* Effect.tryPromise({
-            try: async () => {
-              const write = blobContainers.update ?? blobContainers.create;
-              return await write(
+            try: () =>
+              clients.storage.blobContainers.create(
                 resourceGroupName,
                 storageAccountName,
                 name,
                 params,
-              );
-            },
+              ),
             catch: (cause) =>
               azureError({ operation: "reconcile blob container", resource: name, cause }),
           });

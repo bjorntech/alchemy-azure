@@ -17,6 +17,7 @@ import {
   requireLocation,
   resourceGroupName,
   resolveResourceValue,
+  withHeartbeat,
 } from "./Internal.ts";
 import type { ContainerAppEnvironment } from "./ContainerAppEnvironment.ts";
 import type { ContainerImage } from "./ContainerImage.ts";
@@ -395,7 +396,7 @@ export const ContainerAppProvider = () =>
                 resource: name,
                 cause,
               }),
-          });
+          }).pipe(withHeartbeat(`Container App "${name}"`));
           return toAttributes(app, groupName, news.buildHash);
         }),
         delete: Effect.fnUntraced(function* ({ olds, output, session }) {
@@ -409,7 +410,10 @@ export const ContainerAppProvider = () =>
               ),
             catch: (cause) =>
               azureError({ operation: "delete Container App", resource: output.name, cause }),
-          }).pipe(Effect.catchIf(isNotFound, () => Effect.void));
+          }).pipe(
+            withHeartbeat(`deleting Container App "${output.name}"`),
+            Effect.catchIf(isNotFound, () => Effect.void),
+          );
         }),
       });
     }),
