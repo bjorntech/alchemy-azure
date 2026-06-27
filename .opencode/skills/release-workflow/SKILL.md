@@ -42,7 +42,7 @@ Use this skill when the user asks to release or publish this package.
 - If pushing directly to `main`, note any branch-rule bypass reported by GitHub.
 - Publish through GitHub trusted publishing using `gh workflow run release.yml --ref main`.
 - Watch the workflow with `gh run watch <run-id> --exit-status`.
-- The workflow publishes prerelease versions with npm `next` and stable versions with `latest`.
+- Ensure npm dist-tags are updated after publish: every release should point `latest` at the released version, and beta/prerelease versions should also point `next` at the released version.
 
 ## GitHub Release
 
@@ -54,7 +54,7 @@ Use this skill when the user asks to release or publish this package.
 ## Verification
 
 - Verify npm after workflow success: `npm view "@bjorntech/alchemy-azure@<version>" version dist-tags`.
-- Confirm the expected dist-tag points to the released version: `next` for beta/prerelease versions, `latest` for stable versions.
+- Confirm npm dist-tags point to the released version: `latest` for every release, plus `next` for beta/prerelease versions.
 - Verify GitHub Release metadata: tag `v<version>`, target release commit, and prerelease state for beta versions.
 - Confirm final local state with `git status --short --branch`.
 
