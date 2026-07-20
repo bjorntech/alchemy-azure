@@ -4,6 +4,13 @@ All notable changes to `@bjorntech/alchemy-azure` are documented here. The forma
 
 ## [Unreleased]
 
+## [0.2.3-beta.63] - 2026-07-20
+
+### Changed
+
+- Updated compatibility target to `alchemy@2.0.0-beta.63` and Effect `>=4.0.0-beta.97`.
+- Updated repository references from `alchemy-run/alchemy-effect` to `alchemy-run/alchemy` and added an upstream star CTA to the README.
+
 ## [0.2.2-beta.59] - 2026-06-27
 
 ### Changed

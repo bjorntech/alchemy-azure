@@ -17,13 +17,13 @@ Use this skill for non-trivial work involving `effect` in this repo.
 - Effect docs: `https://effect.website/docs`
 - Effect LLM docs: `https://effect.website/llms-full.txt`
 - Effect source: `https://github.com/Effect-TS/effect`
-- Alchemy source: `@alchemy-effect`
+- Alchemy source: `@alchemy`
 
-Fetch docs or inspect `@alchemy-effect` before making claims about APIs that changed across Effect 4 betas.
+Fetch docs or inspect `@alchemy` before making claims about APIs that changed across Effect 4 betas.
 
 ## Repo Constraints
 
-- This repo currently tests `alchemy@2.0.0-beta.57` with `effect@4.0.0-beta.84`.
+- This repo currently tests `alchemy@2.0.0-beta.63` with `effect@4.0.0-beta.97`.
 - Keep provider implementation code inside Alchemy v2 lifecycle methods.
 - Do not call `Effect.runPromise` in library/provider internals.
 - Prefer typed tagged errors for recoverable cloud/API failures.

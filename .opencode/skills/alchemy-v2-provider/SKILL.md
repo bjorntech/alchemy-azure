@@ -51,4 +51,4 @@ Update `README.md`, `ARCHITECTURE.md`, `CHANGELOG.md`, and `AGENTS.md` when reso
 ## References
 
 - Use this repo's `ARCHITECTURE.md` and `AGENTS.md` as the public source of truth for provider shape and porting decisions.
-- Use `@alchemy-effect` for upstream Alchemy v2 provider APIs, `Resource` / `Provider.effect` patterns, `Platform` behavior, and Effect integration details when API details are unclear.
+- Use `@alchemy` for upstream Alchemy v2 provider APIs, `Resource` / `Provider.effect` patterns, `Platform` behavior, and Effect integration details when API details are unclear.

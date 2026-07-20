@@ -30,7 +30,7 @@ body:
     attributes:
       label: Versions
       description: @bjorntech/alchemy-azure, alchemy, effect, Bun, and TypeScript versions.
-      placeholder: @bjorntech/alchemy-azure 0.1.1-beta.57, alchemy 2.0.0-beta.57, effect 4.0.0-beta.84
+      placeholder: @bjorntech/alchemy-azure 0.2.3-beta.63, alchemy 2.0.0-beta.63, effect 4.0.0-beta.97
     validations:
       required: true
   - type: dropdown

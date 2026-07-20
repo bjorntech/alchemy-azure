@@ -2,6 +2,8 @@
 
 Microsoft Azure providers for [Alchemy v2](https://v2.alchemy.run/).
 
+If you are enjoying Alchemy v2, please give the upstream [alchemy-run/alchemy](https://github.com/alchemy-run/alchemy) repo a star ⭐️.
+
 This package follows Alchemy's official custom-provider model: resources are declared with `Resource`, lifecycle implementations are registered with `Provider.effect`, credentials resolve through an `AuthProvider`, and all Azure providers are exposed as a single `Azure.providers()` layer.
 
 ## Compatibility
@@ -10,7 +12,8 @@ This package follows Alchemy's official custom-provider model: resources are dec
 
 | `@bjorntech/alchemy-azure` | `alchemy` (peer) | `effect` (peer) | Notes |
 | --------------- | ---------------- | --------------- | ----- |
-| `0.2.2-beta.59` | `2.0.0-beta.59`  | `>=4.0.0-beta.84 || >=4.0.0` | Current beta; VM gateway networking primitives. |
+| `0.2.3-beta.63` | `2.0.0-beta.63`  | `>=4.0.0-beta.97 || >=4.0.0` | Current beta; repository rename docs and upstream star CTA. |
+| `0.2.2-beta.59` | `2.0.0-beta.59`  | `>=4.0.0-beta.84 || >=4.0.0` | VM gateway networking primitives. |
 | `0.2.1-beta.58` | `2.0.0-beta.58`  | `>=4.0.0-beta.84 || >=4.0.0` | Whole-resource stable reference migration. |
 | `0.2.0-beta.57` | `2.0.0-beta.57`  | `>=4.0.0-beta.84 || >=4.0.0` | Heartbeat groundwork. |
 | `0.1.1-beta.57` | `2.0.0-beta.57`  | `>=4.0.0-beta.84 || >=4.0.0` | Blob container fix and heartbeat groundwork. |
@@ -22,7 +25,7 @@ The `alchemy` peer dependency is exact-pinned to a specific beta because the v2 
 ## Install
 
 ```sh
-bun add alchemy@2.0.0-beta.59 effect @bjorntech/alchemy-azure
+bun add alchemy@2.0.0-beta.63 effect @bjorntech/alchemy-azure
 ```
 
 `alchemy` and `effect` are peer dependencies — install them in your app, not just transitively.

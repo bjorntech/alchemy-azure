@@ -169,7 +169,7 @@ function waitForAzureDeleted(
     ),
     Effect.retry({
       while: (error) => error instanceof AzureResourceStillExists,
-      schedule: Schedule.fixed("5 seconds").pipe(Schedule.both(Schedule.recurs(60))),
+      schedule: Schedule.fixed("5 seconds").pipe(Schedule.upTo({ times: 60 })),
     }),
   );
 }
@@ -182,8 +182,8 @@ function retryAzureDependencyConflicts(
       Effect.retry({
         while: isDependencyConflict,
         schedule: Schedule.fixed("5 seconds").pipe(
-          Schedule.both(Schedule.recurs(60)),
-          Schedule.tapOutput(([, attempt]) =>
+          Schedule.upTo({ times: 60 }),
+          Schedule.tap(({ attempt }) =>
             session.note(`Waiting for Azure dependencies to clear... (attempt ${attempt + 1})`),
           ),
         ),
