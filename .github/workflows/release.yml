@@ -56,7 +56,7 @@ jobs:
             RELEASE_FLAGS=()
           fi
 
-          TARBALL=$(npm pack --json | node -e "let data=''; process.stdin.on('data', c => data += c); process.stdin.on('end', () => process.stdout.write(JSON.parse(data)[0].filename));")
+          TARBALL=$(npm pack --silent)
 
           if npm view "${PKG_NAME}@${VERSION}" version >/dev/null 2>&1; then
             echo "${PKG_NAME}@${VERSION} already published, skipping npm publish"
