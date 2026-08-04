@@ -23,7 +23,7 @@ Fetch docs or inspect `@alchemy` before making claims about APIs that changed ac
 
 ## Repo Constraints
 
-- This repo currently tests `alchemy@2.0.0-beta.63` with `effect@4.0.0-beta.97`.
+- This repo currently tests `alchemy@2.0.0-beta.67` with `effect@4.0.0-beta.103`.
 - Keep provider implementation code inside Alchemy v2 lifecycle methods.
 - Do not call `Effect.runPromise` in library/provider internals.
 - Prefer typed tagged errors for recoverable cloud/API failures.
