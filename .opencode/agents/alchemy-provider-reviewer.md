@@ -24,7 +24,7 @@ Focus on:
 - Adoption and ownership safety through `alchemy:logical-id` tags or `alchemyLogicalId` blob metadata.
 - Azure SDK client access through the injectable `AzureClients` service rather than direct client construction in provider files.
 - Typed `AzureError` behavior, including cause unwrapping for not-found/already-exists handling.
-- Dependency compatibility with `alchemy@2.0.0-beta.63` and `effect@4.0.0-beta.97`.
+- Dependency compatibility with `alchemy@2.0.0-beta.67` and `effect@4.0.0-beta.103`.
 - Documentation updates in `README.md`, `ARCHITECTURE.md`, `CHANGELOG.md`, and `AGENTS.md`.
 - Required gates: `bun run check`, `bun test`, `bun run coverage:check`.
 

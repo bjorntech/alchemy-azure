@@ -12,12 +12,13 @@ This package follows Alchemy's official custom-provider model: resources are dec
 
 | `@bjorntech/alchemy-azure` | `alchemy` (peer) | `effect` (peer) | Notes |
 | --------------- | ---------------- | --------------- | ----- |
-| `0.2.3-beta.63` | `2.0.0-beta.63`  | `>=4.0.0-beta.97 || >=4.0.0` | Current beta; repository rename docs and upstream star CTA. |
-| `0.2.2-beta.59` | `2.0.0-beta.59`  | `>=4.0.0-beta.84 || >=4.0.0` | VM gateway networking primitives. |
-| `0.2.1-beta.58` | `2.0.0-beta.58`  | `>=4.0.0-beta.84 || >=4.0.0` | Whole-resource stable reference migration. |
-| `0.2.0-beta.57` | `2.0.0-beta.57`  | `>=4.0.0-beta.84 || >=4.0.0` | Heartbeat groundwork. |
-| `0.1.1-beta.57` | `2.0.0-beta.57`  | `>=4.0.0-beta.84 || >=4.0.0` | Blob container fix and heartbeat groundwork. |
-| `0.1.0-beta.57` | `2.0.0-beta.57`  | `>=4.0.0-beta.84 || >=4.0.0` | Initial beta.57 compatibility release. |
+| `0.2.4-beta.67` | `2.0.0-beta.67`  | `>=4.0.0-beta.100 \|\| >=4.0.0` | Current beta; refreshed Alchemy and Effect compatibility. |
+| `0.2.3-beta.63` | `2.0.0-beta.63`  | `>=4.0.0-beta.97 \|\| >=4.0.0` | Repository rename docs and upstream star CTA. |
+| `0.2.2-beta.59` | `2.0.0-beta.59`  | `>=4.0.0-beta.84 \|\| >=4.0.0` | VM gateway networking primitives. |
+| `0.2.1-beta.58` | `2.0.0-beta.58`  | `>=4.0.0-beta.84 \|\| >=4.0.0` | Whole-resource stable reference migration. |
+| `0.2.0-beta.57` | `2.0.0-beta.57`  | `>=4.0.0-beta.84 \|\| >=4.0.0` | Heartbeat groundwork. |
+| `0.1.1-beta.57` | `2.0.0-beta.57`  | `>=4.0.0-beta.84 \|\| >=4.0.0` | Blob container fix and heartbeat groundwork. |
+| `0.1.0-beta.57` | `2.0.0-beta.57`  | `>=4.0.0-beta.84 \|\| >=4.0.0` | Initial beta.57 compatibility release. |
 | `0.1.0-beta.35` | `2.0.0-beta.35`  | `>=4.0.0-beta.60` | Initial public beta. |
 
 The `alchemy` peer dependency is exact-pinned to a specific beta because the v2 API is still evolving. The `effect` peer accepts the tested beta line or stable Effect 4. Bump compatibility docs and release metadata together when the tested Alchemy beta changes.
@@ -25,7 +26,7 @@ The `alchemy` peer dependency is exact-pinned to a specific beta because the v2 
 ## Install
 
 ```sh
-bun add alchemy@2.0.0-beta.63 effect @bjorntech/alchemy-azure
+bun add alchemy@2.0.0-beta.67 effect @bjorntech/alchemy-azure
 ```
 
 `alchemy` and `effect` are peer dependencies — install them in your app, not just transitively.

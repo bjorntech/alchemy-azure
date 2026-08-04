@@ -159,9 +159,9 @@ When mocking environment variables, use `ConfigProvider.fromEnv({ env })` and pr
 
 This package is exact-pinned to a specific `alchemy@2.0.0-beta.X` because v2 is still in beta and breaking changes happen between betas. To upgrade:
 
-1. Bump `peerDependencies.alchemy` and `devDependencies.alchemy` in `package.json` to the new beta.
+1. Bump `peerDependencies.alchemy` and `devDependencies.alchemy` in `package.json` to the new beta, and align `effect` plus `@effect/platform-*` pins with the tested Alchemy line.
 2. Run `bun install`.
-3. Run `bun run check` and `bun test`. Fix any new type errors or breakages.
+3. Run `bun run check`, `bun test`, and `bun run coverage:check`. Fix any new type errors or breakages.
 4. Bump `@bjorntech/alchemy-azure`'s own version to match: `0.1.0-beta.36` for `alchemy@2.0.0-beta.36`, etc.
 5. Update the compatibility matrix in `README.md`.
 6. Add a `CHANGELOG.md` entry describing what changed and any required migration.

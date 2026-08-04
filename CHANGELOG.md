@@ -4,6 +4,12 @@ All notable changes to `@bjorntech/alchemy-azure` are documented here. The forma
 
 ## [Unreleased]
 
+## [0.2.4-beta.67] - 2026-08-04
+
+### Changed
+
+- Updated compatibility target to `alchemy@2.0.0-beta.67` and Effect `>=4.0.0-beta.100`, tested with `effect@4.0.0-beta.103` and matching `@effect/platform-*` packages.
+
 ## [0.2.3-beta.63] - 2026-07-20
 
 ### Changed
