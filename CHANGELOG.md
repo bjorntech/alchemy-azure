@@ -4,6 +4,12 @@ All notable changes to `@bjorntech/alchemy-azure` are documented here. The forma
 
 ## [Unreleased]
 
+## [0.2.5-beta.74] - 2026-08-27
+
+### Changed
+
+- Upgraded non-Cosmos Azure SDK dependencies and refreshed `bun.lock`.
+
 ### Fixed
 
 - Corrected the GitHub release workflow so every provider release, including beta versions, publishes to npm with the `latest` dist-tag.

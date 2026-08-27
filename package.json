@@ -1,6 +1,6 @@
 {
   "name": "@bjorntech/alchemy-azure",
-  "version": "0.2.4-beta.74",
+  "version": "0.2.5-beta.74",
   "description": "Microsoft Azure providers for Alchemy v2",
   "license": "Apache-2.0",
   "type": "module",
