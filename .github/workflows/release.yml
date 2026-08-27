@@ -48,11 +48,11 @@ jobs:
           TAG_NAME="v${VERSION}"
           echo "--- Publishing ${PKG_NAME}@${VERSION} ---"
 
+          TAG="latest"
+
           if [[ "${VERSION}" == *-* ]]; then
-            TAG="next"
             RELEASE_FLAGS=(--prerelease)
           else
-            TAG="latest"
             RELEASE_FLAGS=()
           fi
 
