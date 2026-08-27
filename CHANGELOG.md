@@ -4,6 +4,21 @@ All notable changes to `@bjorntech/alchemy-azure` are documented here. The forma
 
 ## [Unreleased]
 
+### Fixed
+
+- Corrected the GitHub release workflow so every provider release, including beta versions, publishes to npm with the `latest` dist-tag.
+
+## [0.2.4-beta.74] - 2026-08-27
+
+### Changed
+
+- Updated compatibility target to `alchemy@2.0.0-beta.74` and Effect `>=4.0.0-rc.110`, with development pins on Effect rc.112 and matching `@effect/platform-*` rc.112 packages.
+
+### Fixed
+
+- Migrated `AzureError` from `Schema.TaggedErrorClass` to `Schema.TaggedError` so tagged error matching keeps working on the current Effect line.
+- Added focused error coverage for `_tag`, `message`, `cause`, `Effect.catchTag`, and `Effect.catchTags`.
+
 ## [0.2.4-beta.67] - 2026-08-04
 
 ### Changed
