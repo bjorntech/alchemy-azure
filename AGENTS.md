@@ -17,7 +17,7 @@ The package should keep a flat Alchemy v2 provider layout and avoid nested provi
 ## Dependency Policy
 
 - Keep `alchemy`, `effect`, `package.json` version, README compatibility table, and `CHANGELOG.md` aligned.
-- The package beta suffix follows the tested Alchemy beta line, for example `0.1.0-beta.57` with `alchemy@2.0.0-beta.57`.
+- The package beta suffix follows the tested Alchemy beta line, for example `0.2.4-beta.74` with `alchemy@2.0.0-beta.74`.
 - Do not bump dependency pins independently from release metadata.
 
 ## Architecture Rules

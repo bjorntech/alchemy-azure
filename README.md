@@ -12,7 +12,7 @@ This package follows Alchemy's official custom-provider model: resources are dec
 
 | `@bjorntech/alchemy-azure` | `alchemy` (peer) | `effect` (peer) | Notes |
 | --------------- | ---------------- | --------------- | ----- |
-| `0.2.4-beta.67` | `2.0.0-beta.67`  | `>=4.0.0-beta.100 \|\| >=4.0.0` | Current beta; refreshed Alchemy and Effect compatibility. |
+| `0.2.4-beta.74` | `2.0.0-beta.74`  | `>=4.0.0-rc.110 \|\| >=4.0.0` | Current beta; refreshed Alchemy and Effect compatibility. |
 | `0.2.3-beta.63` | `2.0.0-beta.63`  | `>=4.0.0-beta.97 \|\| >=4.0.0` | Repository rename docs and upstream star CTA. |
 | `0.2.2-beta.59` | `2.0.0-beta.59`  | `>=4.0.0-beta.84 \|\| >=4.0.0` | VM gateway networking primitives. |
 | `0.2.1-beta.58` | `2.0.0-beta.58`  | `>=4.0.0-beta.84 \|\| >=4.0.0` | Whole-resource stable reference migration. |
@@ -26,7 +26,7 @@ The `alchemy` peer dependency is exact-pinned to a specific beta because the v2 
 ## Install
 
 ```sh
-bun add alchemy@2.0.0-beta.67 effect @bjorntech/alchemy-azure
+bun add alchemy@2.0.0-beta.74 effect@4.0.0-rc.112 @bjorntech/alchemy-azure
 ```
 
 `alchemy` and `effect` are peer dependencies — install them in your app, not just transitively.
@@ -42,7 +42,7 @@ This package follows the patterns documented at [v2.alchemy.run](https://v2.alch
 - **Ownership** is detected via the `alchemy:logical-id` tag (or `alchemyLogicalId` blob metadata for blob containers); foreign resources surface as `Unowned(attrs)` so `--adopt` is required to take them over.
 - **Authentication** follows the `AuthProviderLayer` pattern with `env` and `stored` methods, interactive `Clank` prompts in TTYs, and non-interactive defaults in CI.
 - **Secrets** (storage keys, connection strings, registry passwords, client secrets) are returned as `Redacted<string>`; Container App `Redacted` env values are sent through Container Apps secrets and `secretRef`.
-- **Errors** use a tagged `AzureError` (via `Schema.TaggedErrorClass`) for `Effect.catchTag` interop.
+- **Errors** use a tagged `AzureError` (via `Schema.TaggedError`) for `Effect.catchTag` / `Effect.catchTags` interop.
 - **Provider layers** bundle into `Azure.providers()` alongside `ProfileLive`, `CredentialsStoreLive`, and the `AzureAuth` registration — same shape as `Cloudflare.providers()` / `Axiom.providers()`.
 
 For a deeper walkthrough, see [`ARCHITECTURE.md`](./ARCHITECTURE.md).

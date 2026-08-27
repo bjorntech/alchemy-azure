@@ -83,6 +83,19 @@ describe("AzureError", () => {
     const result = await Effect.runPromise(program);
     expect(result).toBe("caught: test");
   });
+
+  test("can be matched with Effect.catchTags", async () => {
+    const program = Effect.fail(
+      azureError({ operation: "test tags", cause: new Error("boom") }),
+    ).pipe(
+      Effect.catchTags({
+        AzureError: (e) => Effect.succeed(`caught-tags: ${e._tag}:${e.message}`),
+      }),
+    );
+
+    const result = await Effect.runPromise(program);
+    expect(result).toBe("caught-tags: AzureError:Failed to test tags: boom");
+  });
 });
 
 function makeSdkError(statusCode: number) {

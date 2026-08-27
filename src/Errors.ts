@@ -5,7 +5,7 @@ import * as Schema from "effect/Schema";
  * SDK call fails. Use `Effect.catchTag("AzureError", ...)` to handle
  * these with full type-safety.
  */
-export class AzureError extends Schema.TaggedErrorClass<AzureError>()(
+export class AzureError extends Schema.TaggedError<AzureError>()(
   "AzureError",
   {
     message: Schema.String,
