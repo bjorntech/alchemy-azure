@@ -1,6 +1,6 @@
 {
   "name": "@bjorntech/alchemy-azure",
-  "version": "0.2.5-beta.74",
+  "version": "0.2.6-beta.74",
   "description": "Microsoft Azure providers for Alchemy v2",
   "license": "Apache-2.0",
   "type": "module",
@@ -58,7 +58,7 @@
     "@azure/arm-compute": "^25.1.1",
     "@azure/arm-containerinstance": "^9.1.0",
     "@azure/arm-containerregistry": "^12.0.0",
-    "@azure/arm-cosmosdb": "^9.1.0",
+    "@azure/arm-cosmosdb": "16.0.0",
     "@azure/arm-keyvault": "^5.0.0",
     "@azure/arm-msi": "^2.2.0",
     "@azure/arm-network": "^38.0.0",

@@ -4,6 +4,19 @@ All notable changes to `@bjorntech/alchemy-azure` are documented here. The forma
 
 ## [Unreleased]
 
+## [0.2.6-beta.74] - 2026-08-28
+
+### Changed
+
+- Migrated Cosmos DB management to `@azure/arm-cosmosdb@16.0.0`, which keeps Node.js 18 support and uses `TokenCredential` directly.
+- Pinned Cosmos DB control-plane calls to the supported `2024-05-15` REST api-version via the v16 client options / api-version policy surface.
+
+### Fixed
+
+- Updated `CosmosDBAccount` reconciliation/deletion to the v16 `beginCreateOrUpdateAndWait` / `beginDeleteAndWait` LRO surface.
+- Added regression coverage for Cosmos DB no-op redeploys, adoption of existing accounts, and the compatibility-only `toServiceClientCredentials` shim.
+- Kept the public Cosmos DB resource shape and compatibility export surface unchanged while deprecating the legacy ms-rest adapter for future removal.
+
 ## [0.2.5-beta.74] - 2026-08-27
 
 ### Changed

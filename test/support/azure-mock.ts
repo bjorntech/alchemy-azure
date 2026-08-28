@@ -319,11 +319,19 @@ export function installAzureMock(): AzureMock {
       databaseAccounts: {
         listByResourceGroup: async (rg: string) => listKind("cosmosAccounts", rg),
         get: async (rg: string, name: string) => get("cosmosAccounts", rg, name),
+        beginCreateOrUpdateAndWait: async (rg: string, name: string, params: Record<string, unknown>) =>
+          put("cosmosAccounts", rg, name, params, {
+            documentEndpoint: `https://${name}.documents.azure.com:443/`,
+          }),
         beginCreateOrUpdate: async (rg: string, name: string, params: Record<string, unknown>) => {
           put("cosmosAccounts", rg, name, params, {
             documentEndpoint: `https://${name}.documents.azure.com:443/`,
           });
           return finishingPoller(undefined as void);
+        },
+        beginDeleteAndWait: async (rg: string, name: string) => {
+          del("cosmosAccounts", rg, name);
+          return undefined;
         },
         beginDeleteMethod: async (rg: string, name: string) => {
           del("cosmosAccounts", rg, name);
