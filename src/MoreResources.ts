@@ -1112,8 +1112,8 @@ export const CosmosDBAccountProvider = () =>
           yield* ensureTaggedOwnership(id, "Cosmos DB account", name, output, olds, () =>
             clients.cosmosDB.databaseAccounts.get(rg, name)
           );
-          const account = yield* azurePromise("reconcile Cosmos DB account", name, async () => {
-            const poller = await clients.cosmosDB.databaseAccounts.beginCreateOrUpdate(rg, name, {
+          const account = yield* azurePromise("reconcile Cosmos DB account", name, () =>
+            clients.cosmosDB.databaseAccounts.beginCreateOrUpdateAndWait(rg, name, {
               location,
               kind: news.kind ?? "GlobalDocumentDB",
               databaseAccountOfferType: "Standard",
@@ -1123,21 +1123,13 @@ export const CosmosDBAccountProvider = () =>
               enableFreeTier: news.enableFreeTier,
               locations: news.locations ?? [{ locationName: location, failoverPriority: 0 }],
               tags: withAlchemyTags(id, news.tags),
-            } as Parameters<typeof clients.cosmosDB.databaseAccounts.beginCreateOrUpdate>[2]);
-            await poller.pollUntilFinished();
-            return clients.cosmosDB.databaseAccounts.get(rg, name);
-          }).pipe(withHeartbeat(`Cosmos DB account "${name}"`));
+            } as Parameters<typeof clients.cosmosDB.databaseAccounts.beginCreateOrUpdateAndWait>[2]),
+          ).pipe(withHeartbeat(`Cosmos DB account "${name}"`));
           return yield* cosmosAttrs(account, rg);
         }),
         delete: Effect.fnUntraced(function* ({ olds, output, session }) {
           yield* deleteIfEnabled(
-            async () => {
-              const poller = await clients.cosmosDB.databaseAccounts.beginDeleteMethod(
-                output.resourceGroupName,
-                output.name,
-              );
-              return poller.pollUntilFinished();
-            },
+            () => clients.cosmosDB.databaseAccounts.beginDeleteAndWait(output.resourceGroupName, output.name),
             output.name,
             "Cosmos DB account",
             `deleting Cosmos DB account "${output.name}"`,

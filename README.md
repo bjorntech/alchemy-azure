@@ -12,7 +12,8 @@ This package follows Alchemy's official custom-provider model: resources are dec
 
 | `@bjorntech/alchemy-azure` | `alchemy` (peer) | `effect` (peer) | Notes |
 | --------------- | ---------------- | --------------- | ----- |
-| `0.2.5-beta.74` | `2.0.0-beta.74`  | `>=4.0.0-rc.110 \|\| >=4.0.0` | Current beta; refreshed non-Cosmos Azure SDK dependencies. |
+| `0.2.6-beta.74` | `2.0.0-beta.74`  | `>=4.0.0-rc.110 \|\| >=4.0.0` | Current beta; migrated Cosmos DB to `@azure/arm-cosmosdb@16.0.0`, direct `TokenCredential` auth, and an explicit supported REST api-version pin. |
+| `0.2.5-beta.74` | `2.0.0-beta.74`  | `>=4.0.0-rc.110 \|\| >=4.0.0` | Previous beta; refreshed non-Cosmos Azure SDK dependencies. |
 | `0.2.4-beta.74` | `2.0.0-beta.74`  | `>=4.0.0-rc.110 \|\| >=4.0.0` | Previous beta; refreshed Alchemy and Effect compatibility. |
 | `0.2.3-beta.63` | `2.0.0-beta.63`  | `>=4.0.0-beta.97 \|\| >=4.0.0` | Repository rename docs and upstream star CTA. |
 | `0.2.2-beta.59` | `2.0.0-beta.59`  | `>=4.0.0-beta.84 \|\| >=4.0.0` | VM gateway networking primitives. |
@@ -27,7 +28,7 @@ The `alchemy` peer dependency is exact-pinned to a specific beta because the v2 
 ## Install
 
 ```sh
-bun add alchemy@2.0.0-beta.74 effect@4.0.0-rc.112 @bjorntech/alchemy-azure@0.2.5-beta.74
+bun add alchemy@2.0.0-beta.74 effect@4.0.0-rc.112 @bjorntech/alchemy-azure@0.2.6-beta.74
 ```
 
 `alchemy` and `effect` are peer dependencies — install them in your app, not just transitively.

@@ -548,6 +548,56 @@ describe("Data + messaging providers", () => {
     }),
   );
 
+  test.provider("does not recreate an unchanged Cosmos DB account on redeploy", (stack) =>
+    Effect.gen(function* () {
+      const program = Azure.CosmosDBAccount("Db", {
+        name: "cosmosnoop001",
+        resourceGroup: "rg-test",
+        location: "westeurope",
+        tags: { stage: "stable" },
+      });
+
+      const first = yield* stack.deploy(program);
+      const second = yield* stack.deploy(program);
+
+      expect(second.endpoint).toBe(first.endpoint);
+      expect(calls("cosmosAccounts.put:cosmosnoop001")).toHaveLength(1);
+      expect(called("cosmosAccounts.delete")).toBe(false);
+    }),
+  );
+
+  test.provider("rejects then adopts an unowned existing Cosmos DB account", (stack) =>
+    Effect.gen(function* () {
+      mock.seedKind("cosmosAccounts", "rg-test", {
+        name: "foreigncosmos001",
+        location: "westeurope",
+        documentEndpoint: "https://foreigncosmos001.documents.azure.com:443/",
+      });
+
+      yield* expectDeployToFail(
+        stack,
+        Azure.CosmosDBAccount("Db", {
+          name: "foreigncosmos001",
+          resourceGroup: "rg-test",
+          location: "westeurope",
+        }),
+      ).pipe(Effect.map((cause) => expect(cause).toContain("Cannot adopt resource")));
+
+      const adopted = yield* stack.deploy(
+        Azure.CosmosDBAccount("Db", {
+          name: "foreigncosmos001",
+          resourceGroup: "rg-test",
+          location: "westeurope",
+        }).pipe(adoptResource()),
+      );
+
+      expect(adopted.endpoint).toContain("documents.azure.com");
+      expect(called("cosmosAccounts.get:foreigncosmos001")).toBe(true);
+      expect(calls("cosmosAccounts.put:foreigncosmos001")).toHaveLength(1);
+      expect(called("cosmosAccounts.delete")).toBe(false);
+    }),
+  );
+
   test.provider("creates a SQL server and database", (stack) =>
     Effect.gen(function* () {
       const server = yield* stack.deploy(

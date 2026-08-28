@@ -19,6 +19,8 @@ import * as Layer from "effect/Layer";
 import type { ServiceClientCredentials } from "@azure/ms-rest-js";
 import { AzureCredentials } from "./Credentials.ts";
 
+const COSMOS_DB_API_VERSION = "2024-05-15";
+
 export interface AzureClientsShape {
   resources: ResourceManagementClient;
   storage: StorageManagementClient;
@@ -60,13 +62,17 @@ export const buildAzureClients = (credentials: {
   tenantId?: string;
 }): AzureClientsShape => {
   const { credential, subscriptionId, tenantId } = credentials;
-  const serviceClientCredentials = toServiceClientCredentials(credential);
   return {
     resources: new ResourceManagementClient(credential, subscriptionId),
     storage: new StorageManagementClient(credential, subscriptionId),
     msi: new ManagedServiceIdentityClient(credential, subscriptionId),
     appService: new WebSiteManagementClient(credential, subscriptionId),
-    cosmosDB: new CosmosDBManagementClient(serviceClientCredentials, subscriptionId),
+    // v16 keeps an explicit api-version override on the constructor surface, so
+    // we pin the supported 2024-05-15 REST contract rather than inheriting the
+    // SDK default implicitly.
+    cosmosDB: new CosmosDBManagementClient(credential, subscriptionId, {
+      apiVersion: COSMOS_DB_API_VERSION,
+    }),
     sql: new SqlManagementClient(credential, subscriptionId),
     network: new NetworkManagementClient(credential, subscriptionId),
     containerInstance: new ContainerInstanceManagementClient(credential, subscriptionId),
@@ -108,6 +114,10 @@ function base64UrlToBase64(value: string) {
   return base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
 }
 
+/**
+ * @deprecated Use direct `TokenCredential` auth through {@link buildAzureClients} instead.
+ * This compatibility shim remains for existing consumers and will be removed in a future major release.
+ */
 export function toServiceClientCredentials(credential: TokenCredential): ServiceClientCredentials {
   return {
     signRequest: async (webResource) => {
