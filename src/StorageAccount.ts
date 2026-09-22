@@ -28,12 +28,12 @@ export interface StorageAccountProps {
   location?: string;
   /** @default "Standard_LRS" */
   sku?:
-    | "Standard_LRS"
-    | "Standard_GRS"
-    | "Standard_RAGRS"
-    | "Standard_ZRS"
-    | "Premium_LRS"
-    | "Premium_ZRS";
+  | "Standard_LRS"
+  | "Standard_GRS"
+  | "Standard_RAGRS"
+  | "Standard_ZRS"
+  | "Premium_LRS"
+  | "Premium_ZRS";
   /** @default "StorageV2" */
   kind?: "StorageV2" | "BlobStorage" | "BlockBlobStorage" | "FileStorage";
   /** @default "Hot" */
@@ -94,6 +94,7 @@ export const StorageAccountProvider = () =>
           suffixLength: 8,
           delimiter: "",
           lowercase: true,
+          sanitize: (value) => value.replaceAll(/[^a-z0-9]/g, ""),
         });
 
       return StorageAccount.Provider.of({
@@ -254,8 +255,8 @@ export const StorageAccountProvider = () =>
             primaryAccessKey: primaryAccessKey ? Redacted.make(primaryAccessKey) : undefined,
             primaryConnectionString: primaryAccessKey
               ? Redacted.make(
-                  `DefaultEndpointsProtocol=https;AccountName=${account.name};AccountKey=${primaryAccessKey};EndpointSuffix=core.windows.net`,
-                )
+                `DefaultEndpointsProtocol=https;AccountName=${account.name};AccountKey=${primaryAccessKey};EndpointSuffix=core.windows.net`,
+              )
               : undefined,
             provisioningState: account.provisioningState,
             tags: account.tags,

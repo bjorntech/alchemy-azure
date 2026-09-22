@@ -166,6 +166,21 @@ describe("StorageAccount provider", () => {
     ).pipe(Effect.map((cause) => expect(cause).toContain("is invalid"))),
   );
 
+  test.provider("generates a valid storage account name from a hyphenated id", (stack) =>
+    Effect.gen(function* () {
+      const account = yield* stack.deploy(
+        Azure.StorageAccount("my-store", {
+          resourceGroup: "rg-test",
+          location: "westeurope",
+        }),
+      );
+
+      expect(account.name).toMatch(/^[a-z0-9]{3,24}$/);
+
+      yield* stack.destroy();
+    }),
+  );
+
   test.provider("retained storage account is rediscovered from read path", (stack) =>
     Effect.gen(function* () {
       const program = Azure.StorageAccount("Store", {
