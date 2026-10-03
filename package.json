@@ -61,7 +61,7 @@
     "@azure/arm-cosmosdb": "16.0.0",
     "@azure/arm-keyvault": "^5.0.0",
     "@azure/arm-msi": "^2.2.0",
-    "@azure/arm-network": "^38.0.0",
+    "@azure/arm-network": "^39.0.0",
     "@azure/arm-resources": "^8.0.0",
     "@azure/arm-servicebus": "^7.0.0",
     "@azure/arm-sql": "^11.0.0",
