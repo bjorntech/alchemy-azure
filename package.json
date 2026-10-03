@@ -52,7 +52,7 @@
     "prepublishOnly": "bun run check && bun test && bun run coverage:check"
   },
   "dependencies": {
-    "@azure/arm-appcontainers": "^3.0.0",
+    "@azure/arm-appcontainers": "^4.0.0",
     "@azure/arm-appservice": "^19.0.0",
     "@azure/arm-cognitiveservices": "^8.1.0",
     "@azure/arm-compute": "^25.1.1",
