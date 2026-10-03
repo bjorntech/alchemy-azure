@@ -11,7 +11,7 @@
         "@azure/arm-compute": "^25.1.1",
         "@azure/arm-containerinstance": "^9.1.0",
         "@azure/arm-containerregistry": "^12.0.0",
-        "@azure/arm-cosmosdb": "16.0.0",
+        "@azure/arm-cosmosdb": "17.0.0",
         "@azure/arm-keyvault": "^5.0.0",
         "@azure/arm-msi": "^2.2.0",
         "@azure/arm-network": "^38.0.0",
@@ -64,7 +64,7 @@
 
     "@azure/arm-containerregistry": ["@azure/arm-containerregistry@12.0.0", "", { "dependencies": { "@azure-rest/core-client": "^2.3.1", "@azure/abort-controller": "^2.1.2", "@azure/core-auth": "^1.9.0", "@azure/core-lro": "^3.1.0", "@azure/core-rest-pipeline": "^1.20.0", "@azure/core-util": "^1.12.0", "@azure/logger": "^1.2.0", "tslib": "^2.8.1" } }, "sha512-G7OfGpKkm8IV3STq6GLsNnpC7LvRPyDo0eUOE91b7Pp5ckQ9+sTwYP4gZ87TjvdjldnazQfD6QKa/wHnkuB4yg=="],
 
-    "@azure/arm-cosmosdb": ["@azure/arm-cosmosdb@16.0.0", "", { "dependencies": { "@azure/abort-controller": "^1.0.0", "@azure/core-auth": "^1.6.0", "@azure/core-client": "^1.7.0", "@azure/core-lro": "^2.5.4", "@azure/core-paging": "^1.2.0", "@azure/core-rest-pipeline": "^1.14.0", "tslib": "^2.2.0" } }, "sha512-CsFpqHS3mH8dvdxv4ytQ5j4o8m2NvwGX287Cpdx8PybJIV87udDPAy+ePdVu6//C4QDCCAvJ2+Ya+5AZsJRZtQ=="],
+    "@azure/arm-cosmosdb": ["@azure/arm-cosmosdb@17.0.0", "", { "dependencies": { "@azure-rest/core-client": "^2.3.1", "@azure/abort-controller": "^2.1.2", "@azure/core-auth": "^1.9.0", "@azure/core-lro": "^3.1.0", "@azure/core-rest-pipeline": "^1.20.0", "@azure/core-util": "^1.12.0", "@azure/logger": "^1.2.0", "tslib": "^2.8.1" } }, "sha512-JdD/+4TtK+IhUz1Sq6jUNshuywyCD2MFGKfGI2B+njdqKGFMGEaA55gvygLfXaC/1mocBYH1p9Jn8OBBiQO5vQ=="],
 
     "@azure/arm-keyvault": ["@azure/arm-keyvault@5.0.0", "", { "dependencies": { "@azure-rest/core-client": "^2.3.1", "@azure/abort-controller": "^2.1.2", "@azure/core-auth": "^1.9.0", "@azure/core-lro": "^3.1.0", "@azure/core-rest-pipeline": "^1.20.0", "@azure/core-util": "^1.12.0", "@azure/logger": "^1.2.0", "tslib": "^2.8.1" } }, "sha512-kQX6pu/sjOoPadT37UxgyuFuXOPqp+KzEjgYCVW7r4nonvRjBPCYxANddNwmzzoYIolShur6K5u9G01M5gH5yw=="],
 
@@ -752,7 +752,9 @@
 
     "@azure/arm-containerregistry/@azure/core-lro": ["@azure/core-lro@3.3.1", "", { "dependencies": { "@azure/abort-controller": "^2.1.2", "@azure/core-util": "^1.13.0", "@azure/logger": "^1.3.0", "tslib": "^2.6.2" } }, "sha512-bulm3klLqIAhzI3iQMYQ42i+V9EnevScsHdI9amFfjaw6OJqPBK1038cq5qachoKV3yt/iQQEDittHmZW2aSuA=="],
 
-    "@azure/arm-cosmosdb/@azure/abort-controller": ["@azure/abort-controller@1.1.0", "", { "dependencies": { "tslib": "^2.2.0" } }, "sha512-TrRLIoSQVzfAJX9H1JeFjzAoDGcoK1IYX1UImfceTZpsyYfWr09Ss1aHW1y5TrrR3iq6RZLBwJ3E24uwPhwahw=="],
+    "@azure/arm-cosmosdb/@azure-rest/core-client": ["@azure-rest/core-client@2.8.0", "", { "dependencies": { "@azure/abort-controller": "^2.1.2", "@azure/core-auth": "^1.10.0", "@azure/core-rest-pipeline": "^1.24.0", "@azure/core-tracing": "^1.3.0", "@typespec/ts-http-runtime": "^0.3.0", "tslib": "^2.6.2" } }, "sha512-F1ybHeN+++QhyFCF/ehLUEvrOB6fehPdFBFtGdj0C3B2lpQ9zkPiO5JDgsqc6IfjuUe6b3dAbXK0a7+VgSGfhw=="],
+
+    "@azure/arm-cosmosdb/@azure/core-lro": ["@azure/core-lro@3.3.1", "", { "dependencies": { "@azure/abort-controller": "^2.1.2", "@azure/core-util": "^1.13.0", "@azure/logger": "^1.3.0", "tslib": "^2.6.2" } }, "sha512-bulm3klLqIAhzI3iQMYQ42i+V9EnevScsHdI9amFfjaw6OJqPBK1038cq5qachoKV3yt/iQQEDittHmZW2aSuA=="],
 
     "@azure/arm-cosmosdb/@azure/core-rest-pipeline": ["@azure/core-rest-pipeline@1.25.0", "", { "dependencies": { "@azure/abort-controller": "^2.1.2", "@azure/core-auth": "^1.10.0", "@azure/core-tracing": "^1.3.0", "@azure/core-util": "^1.13.0", "@azure/logger": "^1.3.0", "@typespec/ts-http-runtime": "^0.3.4", "tslib": "^2.6.2" } }, "sha512-bMs8ekJLjX8wPV+9IPBges1SLPyuDtE9g5gLDWOpxzKcoOFQnpLGkbcT1tdw3FaAmDS1gnPmMmJ6y/T5B96kIA=="],
 
@@ -797,7 +799,5 @@
     "proper-lockfile/signal-exit": ["signal-exit@3.0.7", "", {}, "sha512-wnD2ZE+l+SPC/uoS0vXeE9L1+0wuaMqKlfz9AMUo38JsyLSBWSFcHR1Rri62LZc12vLr1gb3jl7iwQhgwpAbGQ=="],
 
     "wrap-ansi/string-width": ["string-width@7.2.0", "", { "dependencies": { "emoji-regex": "^10.3.0", "get-east-asian-width": "^1.0.0", "strip-ansi": "^7.1.0" } }, "sha512-tsaTIkKW9b4N+AEj+SVA+WhJzV7/zMhcSu78mLKWSk7cXMOSHsBKFWUs0fWwq8QyK3MgJBQRX6Gbi4kYbdvGkQ=="],
-
-    "@azure/arm-cosmosdb/@azure/core-rest-pipeline/@azure/abort-controller": ["@azure/abort-controller@2.1.2", "", { "dependencies": { "tslib": "^2.6.2" } }, "sha512-nBrLsEWm4J2u5LpAPjxADTlq3trDgVZZXHNKabeXZtpq3d3AbN/KGO82R87rdDz5/lYB024rtEf10/q0urNgsA=="],
   }
 }
