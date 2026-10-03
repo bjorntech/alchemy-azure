@@ -186,18 +186,17 @@ export const ContainerApp: ContainerAppPlatform = Platform("Azure.ContainerApp",
           return key;
         }),
       get: <T>(key: string) =>
-        Config.string(key)
-          .pipe(
-            Effect.flatMap((value) =>
-              Effect.try({
-                try: () => JSON.parse(value) as T,
-                catch: (error) => error as Error,
-              }),
-            ),
-            Effect.catch((cause) =>
-              Effect.die(new Error(`Failed to get environment variable: ${key}`, { cause })),
-            ),
+        Config.String(key).pipe(
+          Effect.flatMap((value) =>
+            Effect.try({
+              try: () => JSON.parse(value) as T,
+              catch: (error) => error as Error,
+            }),
           ),
+          Effect.catch((cause) =>
+            Effect.die(new Error(`Failed to get environment variable: ${key}`, { cause })),
+          ),
+        ),
     };
   },
 });
@@ -236,8 +235,12 @@ export const ContainerAppProvider = () =>
               (group) => {
                 if (!group.name) return Effect.succeed([]);
                 return Effect.tryPromise({
-                  try: () => collectAzurePages(clients.appContainers.containerApps.listByResourceGroup(group.name!)),
-                  catch: (cause) => azureError({ operation: "list Container Apps", resource: group.name, cause }),
+                  try: () =>
+                    collectAzurePages(
+                      clients.appContainers.containerApps.listByResourceGroup(group.name!),
+                    ),
+                  catch: (cause) =>
+                    azureError({ operation: "list Container Apps", resource: group.name, cause }),
                 }).pipe(Effect.map((items) => items.map((item) => [group.name!, item] as const)));
               },
               { concurrency: 4 },
@@ -271,33 +274,38 @@ export const ContainerAppProvider = () =>
               ? ({ action: "replace" } as const)
               : ({ action: "update" } as const);
           }
-          if (!sameDiffValue({
-            image: yield* imageName(olds.image),
-            registry: oldRegistry,
-            buildHash: olds.buildHash,
-            targetPort: olds.targetPort ?? 3000,
-            external: olds.external ?? true,
-            env: olds.env ?? {},
-            cpu: olds.cpu ?? 0.5,
-            memory: olds.memory ?? "1Gi",
-            minReplicas: olds.minReplicas ?? 0,
-            maxReplicas: olds.maxReplicas ?? 1,
-            containerName: olds.containerName ?? "app",
-            tags: olds.tags ?? {},
-          }, {
-            image: resolvedImage,
-            registry: newRegistry,
-            buildHash: news.buildHash,
-            targetPort: news.targetPort ?? 3000,
-            external: news.external ?? true,
-            env: news.env ?? {},
-            cpu: news.cpu ?? 0.5,
-            memory: news.memory ?? "1Gi",
-            minReplicas: news.minReplicas ?? 0,
-            maxReplicas: news.maxReplicas ?? 1,
-            containerName: news.containerName ?? "app",
-            tags: news.tags ?? {},
-          })) {
+          if (
+            !sameDiffValue(
+              {
+                image: yield* imageName(olds.image),
+                registry: oldRegistry,
+                buildHash: olds.buildHash,
+                targetPort: olds.targetPort ?? 3000,
+                external: olds.external ?? true,
+                env: olds.env ?? {},
+                cpu: olds.cpu ?? 0.5,
+                memory: olds.memory ?? "1Gi",
+                minReplicas: olds.minReplicas ?? 0,
+                maxReplicas: olds.maxReplicas ?? 1,
+                containerName: olds.containerName ?? "app",
+                tags: olds.tags ?? {},
+              },
+              {
+                image: resolvedImage,
+                registry: newRegistry,
+                buildHash: news.buildHash,
+                targetPort: news.targetPort ?? 3000,
+                external: news.external ?? true,
+                env: news.env ?? {},
+                cpu: news.cpu ?? 0.5,
+                memory: news.memory ?? "1Gi",
+                minReplicas: news.minReplicas ?? 0,
+                maxReplicas: news.maxReplicas ?? 1,
+                containerName: news.containerName ?? "app",
+                tags: news.tags ?? {},
+              },
+            )
+          ) {
             return { action: "update" } as const;
           }
           return undefined;
@@ -310,7 +318,8 @@ export const ContainerAppProvider = () =>
           const name = output?.name ?? containerAppName(id, instanceId, olds?.name);
           const app = yield* Effect.tryPromise({
             try: () => clients.appContainers.containerApps.get(groupName, name),
-            catch: (cause) => azureError({ operation: "read Container App", resource: name, cause }),
+            catch: (cause) =>
+              azureError({ operation: "read Container App", resource: name, cause }),
           }).pipe(Effect.catchIf(isNotFound, () => Effect.succeed(undefined)));
           if (!app) return undefined;
           const attrs = toAttributes(app, groupName, output?.buildHash ?? olds?.buildHash);
@@ -341,7 +350,11 @@ export const ContainerAppProvider = () =>
             const existing = yield* Effect.tryPromise({
               try: () => clients.appContainers.containerApps.get(groupName, name),
               catch: (cause) =>
-                azureError({ operation: "read Container App before update", resource: name, cause }),
+                azureError({
+                  operation: "read Container App before update",
+                  resource: name,
+                  cause,
+                }),
             }).pipe(Effect.catchIf(isNotFound, () => Effect.succeed(undefined)));
             if (existing && hasAlchemyTags(id, output.tags) && !hasAlchemyTags(id, existing.tags)) {
               throw new Error(`Cannot adopt resource "${name}" without --adopt.`);
@@ -352,62 +365,62 @@ export const ContainerAppProvider = () =>
           const app = yield* lock.withLock(
             containerEnvironmentScopeKeyFromId(resolvedEnvironmentId),
             Effect.tryPromise({
-            try: () =>
-              clients.appContainers.containerApps.beginCreateOrUpdateAndWait(groupName, name, {
-                location,
-                environmentId: resolvedEnvironmentId,
-                tags: withAlchemyTags(id, {
-                  ...news.tags,
-                  ...(news.buildHash ? { "alchemy:build-hash": news.buildHash } : {}),
-                }),
-                configuration: {
-                  activeRevisionsMode: "Single",
-                  secrets: secrets.length > 0 ? secrets : undefined,
-                  registries:
-                    registry.server && registry.username && registry.password
-                      ? [
-                          {
-                            server: registry.server,
-                            username: registry.username,
-                            passwordSecretRef: "registry-password",
-                          },
-                        ]
-                      : undefined,
-                  ingress: {
-                    external: news.external ?? true,
-                    targetPort,
-                    transport: "auto",
-                    traffic: [{ latestRevision: true, weight: 100 }],
-                  },
-                },
-                template: {
-                  revisionSuffix: news.buildHash
-                    ? `r${news.buildHash.slice(0, 10).toLowerCase()}`
-                    : undefined,
-                  containers: [
-                    {
-                      name: news.containerName ?? "app",
-                      image: resolvedImage,
-                      env: env.entries,
-                      resources: {
-                        cpu: news.cpu ?? 0.5,
-                        memory: news.memory ?? "1Gi",
-                      },
+              try: () =>
+                clients.appContainers.containerApps.beginCreateOrUpdateAndWait(groupName, name, {
+                  location,
+                  environmentId: resolvedEnvironmentId,
+                  tags: withAlchemyTags(id, {
+                    ...news.tags,
+                    ...(news.buildHash ? { "alchemy:build-hash": news.buildHash } : {}),
+                  }),
+                  configuration: {
+                    activeRevisionsMode: "Single",
+                    secrets: secrets.length > 0 ? secrets : undefined,
+                    registries:
+                      registry.server && registry.username && registry.password
+                        ? [
+                            {
+                              server: registry.server,
+                              username: registry.username,
+                              passwordSecretRef: "registry-password",
+                            },
+                          ]
+                        : undefined,
+                    ingress: {
+                      external: news.external ?? true,
+                      targetPort,
+                      transport: "auto",
+                      traffic: [{ latestRevision: true, weight: 100 }],
                     },
-                  ],
-                  scale: {
-                    minReplicas: news.minReplicas ?? 0,
-                    maxReplicas: news.maxReplicas ?? 1,
                   },
-                },
-              }),
-            catch: (cause) =>
-              azureError({
-                operation: "reconcile Container App",
-                resource: name,
-                cause,
-              }),
-          }).pipe(withHeartbeat(`Container App "${name}"`)),
+                  template: {
+                    revisionSuffix: news.buildHash
+                      ? `r${news.buildHash.slice(0, 10).toLowerCase()}`
+                      : undefined,
+                    containers: [
+                      {
+                        name: news.containerName ?? "app",
+                        image: resolvedImage,
+                        env: env.entries,
+                        resources: {
+                          cpu: news.cpu ?? 0.5,
+                          memory: news.memory ?? "1Gi",
+                        },
+                      },
+                    ],
+                    scale: {
+                      minReplicas: news.minReplicas ?? 0,
+                      maxReplicas: news.maxReplicas ?? 1,
+                    },
+                  },
+                }),
+              catch: (cause) =>
+                azureError({
+                  operation: "reconcile Container App",
+                  resource: name,
+                  cause,
+                }),
+            }).pipe(withHeartbeat(`Container App "${name}"`)),
           );
           return toAttributes(app, groupName, news.buildHash);
         }),
@@ -473,7 +486,11 @@ function materializeContainerEnv(env: Record<string, unknown>) {
   const secrets: Array<{ name: string; value: string }> = [];
   const entries = Object.entries(env).map(([name, value]) => {
     if (!Redacted.isRedacted(value)) return { name, value: stringifyEnvValue(value) };
-    const slug = name.toLowerCase().replaceAll(/[^a-z0-9-]/g, "-").replaceAll(/^-+|-+$/g, "") || "value";
+    const slug =
+      name
+        .toLowerCase()
+        .replaceAll(/[^a-z0-9-]/g, "-")
+        .replaceAll(/^-+|-+$/g, "") || "value";
     const suffix = stableShortHash(name);
     const secretName = `env-${slug.slice(0, 64 - suffix.length - 5)}-${suffix}`;
     secrets.push({ name: secretName, value: String(Redacted.value(value)) });

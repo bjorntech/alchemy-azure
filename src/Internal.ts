@@ -39,6 +39,10 @@ export const withHeartbeat =
 
 export type NamedResourceGroup = string | ResourceGroup;
 
+type ResolvedValue<T> = T extends Effect.Effect<infer A, any, any> ? ResolvedValue<A>
+  : T extends { asEffect: () => Effect.Effect<infer A, any, any> } ? ResolvedValue<A>
+  : T;
+
 export interface PhysicalNameOptions {
   maxLength?: number;
   suffixLength?: number;
@@ -125,16 +129,20 @@ export const resourceGroupLocation = (resourceGroup: NamedResourceGroup) =>
     return yield* resolveResourceValue(resourceGroup.location);
   });
 
-export function resolveResourceValue<T>(value: T) {
+export function resolveResourceValue<T>(value: T): Effect.Effect<ResolvedValue<T>, never, never> {
   return Effect.gen(function* () {
-    if (Effect.isEffect(value)) return yield* value;
-    const maybeOutput = value as { asEffect?: () => Effect.Effect<Effect.Effect<T>> };
-    if (typeof maybeOutput?.asEffect === "function") {
+    if (Effect.isEffect(value)) {
+      return yield* value as Effect.Effect<ResolvedValue<T>, unknown, unknown>;
+    }
+    const maybeOutput = value as {
+      asEffect?: () => Effect.Effect<Effect.Effect<ResolvedValue<T>, unknown, unknown>, unknown, unknown>;
+    };
+    if (typeof maybeOutput.asEffect === "function") {
       const accessor = yield* maybeOutput.asEffect();
       return yield* accessor;
     }
-    return value;
-  });
+    return value as ResolvedValue<T>;
+  }) as Effect.Effect<ResolvedValue<T>, never, never>;
 }
 
 /**

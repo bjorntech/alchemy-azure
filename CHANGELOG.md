@@ -4,6 +4,26 @@ All notable changes to `@bjorntech/alchemy-azure` are documented here. The forma
 
 ## [Unreleased]
 
+## [0.2.7-beta.80] - 2026-10-03
+
+### Changed
+
+- Updated the compatibility target to Alchemy `2.0.0-beta.80` and published
+  Effect `4.0.0`, including matching `@effect/platform-*` packages and the
+  `^4.0.0` Effect peer range.
+- Adopted beta.80-native schema-backed auth, named profiles, `Interaction` and
+  `ProfileStore` integration, and deferred service access. Existing stored
+  Azure credentials may require explicit profile reconfiguration; legacy auth
+  and service fallbacks are not supported.
+- Updated the development toolchain to Bun `1.4.2`, TypeScript `7.0.2`, and
+  oxfmt `0.66.0`.
+
+### Breaking
+
+- Direct consumers of `AzureCredentials` and `AzureClients` must use beta.80's
+  nested deferred-service access pattern. Bare deploys now default to
+  `live_$USER`; use `--stage` or `ALCHEMY_STAGE` to preserve an existing stage.
+
 ## [0.2.6-beta.74] - 2026-08-28
 
 ### Changed
