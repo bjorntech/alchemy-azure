@@ -14,7 +14,7 @@
         "@azure/arm-cosmosdb": "16.0.0",
         "@azure/arm-keyvault": "^5.0.0",
         "@azure/arm-msi": "^2.2.0",
-        "@azure/arm-network": "^38.0.0",
+        "@azure/arm-network": "^39.0.0",
         "@azure/arm-resources": "^8.0.0",
         "@azure/arm-servicebus": "^7.0.0",
         "@azure/arm-sql": "^11.0.0",
@@ -70,7 +70,7 @@
 
     "@azure/arm-msi": ["@azure/arm-msi@2.2.0", "", { "dependencies": { "@azure/core-auth": "^1.9.0", "@azure/core-client": "^1.9.2", "@azure/core-paging": "^1.6.2", "@azure/core-rest-pipeline": "^1.19.0", "tslib": "^2.8.1" } }, "sha512-Wqg9j9qR+k1IxZXwKtegZWj6k1d6UUGOz4uHPmhyJOeiQrtZHXBcaWSZhtqJo5sy888TD6jVIQV/4znhbKYL9g=="],
 
-    "@azure/arm-network": ["@azure/arm-network@38.0.0", "", { "dependencies": { "@azure-rest/core-client": "^2.7.0", "@azure/abort-controller": "^2.1.2", "@azure/core-auth": "^1.9.0", "@azure/core-lro": "^3.1.0", "@azure/core-rest-pipeline": "^1.24.0", "@azure/core-util": "^1.12.0", "@azure/logger": "^1.2.0", "tslib": "^2.8.1" } }, "sha512-naZAAbiqIXFyk0qo0FQsEfxstALWTJkIU9UZQvHD7s2TpfRHdsg2XwomwDWmcXNWPUJ9yh/tv2i1uKWxLXnpzw=="],
+    "@azure/arm-network": ["@azure/arm-network@39.0.0", "", { "dependencies": { "@azure-rest/core-client": "^2.7.0", "@azure/abort-controller": "^2.1.2", "@azure/core-auth": "^1.9.0", "@azure/core-lro": "^3.1.0", "@azure/core-rest-pipeline": "^1.24.0", "@azure/core-util": "^1.12.0", "@azure/logger": "^1.2.0", "tslib": "^2.8.1" } }, "sha512-JBfpttb3YdsaUXz4KjrOcowLLIvL5htuMz2MuCwE2Zv0AWBAatVY7Myly0P2RSBG4PdcGBCACkKk5Ptca+yjrw=="],
 
     "@azure/arm-resources": ["@azure/arm-resources@8.0.0", "", { "dependencies": { "@azure-rest/core-client": "^2.3.1", "@azure/abort-controller": "^2.1.2", "@azure/core-auth": "^1.9.0", "@azure/core-lro": "^3.1.0", "@azure/core-rest-pipeline": "^1.20.0", "@azure/core-util": "^1.12.0", "@azure/logger": "^1.2.0", "tslib": "^2.8.1" } }, "sha512-cTMhI0aK6ge2NSlH4mGGc+X5qguaI3VcaBQI0rGW9XfGvqkxJ3HGlb7CaDybq52rA0OKFk1aTa7fFtzF02svuA=="],
 
