@@ -2,16 +2,10 @@ import { BlobServiceClient, StorageSharedKeyCredential } from "@azure/storage-bl
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { decodeFqn, encodeFqn } from "alchemy/FQN";
-import {
-  encodeState,
-  reviveState,
-  State,
-  STATE_STORE_VERSION,
-  StateStoreError,
-  type ReplacedResourceState,
-  type ResourceState,
-  type StateService,
-} from "alchemy/State";
+import { STATE_STORE_VERSION } from "alchemy/State/HttpStateApi";
+import { State, StateStoreError, type StateService } from "alchemy/State/State";
+import { encodeState, reviveState } from "alchemy/State/StateEncoding";
+import type { ReplacedResourceState, ResourceState } from "alchemy/State/ResourceState";
 
 export interface BlobStateProps {
   /**
@@ -85,7 +79,9 @@ export const makeBlobState = (props: BlobStateProps = {}) =>
     const prefix = normalizePrefix(props.prefix ?? "alchemy/state");
 
     if (!accountName) {
-      return missingBlobStateService("Azure Blob state requires accountName or AZURE_STORAGE_ACCOUNT.");
+      return missingBlobStateService(
+        "Azure Blob state requires accountName or AZURE_STORAGE_ACCOUNT.",
+      );
     }
     if (!accountKey) {
       return missingBlobStateService("Azure Blob state requires accountKey or AZURE_STORAGE_KEY.");

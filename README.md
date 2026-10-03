@@ -12,7 +12,8 @@ This package follows Alchemy's official custom-provider model: resources are dec
 
 | `@bjorntech/alchemy-azure` | `alchemy` (peer) | `effect` (peer) | Notes |
 | --------------- | ---------------- | --------------- | ----- |
-| `0.2.6-beta.74` | `2.0.0-beta.74`  | `>=4.0.0-rc.110 \|\| >=4.0.0` | Current beta; migrated Cosmos DB to `@azure/arm-cosmosdb@16.0.0`, direct `TokenCredential` auth, and an explicit supported REST api-version pin. |
+| `0.2.7-beta.80` | `2.0.0-beta.80`  | `^4.0.0` | Beta.80-native auth and service APIs, published Effect 4.0.0 platform packages, and the synchronized TypeScript 7.0.2/Bun 1.4.2 toolchain. |
+| `0.2.6-beta.74` | `2.0.0-beta.74`  | `>=4.0.0-rc.110 \|\| >=4.0.0` | Previous beta; migrated Cosmos DB to `@azure/arm-cosmosdb@16.0.0`, direct `TokenCredential` auth, and an explicit supported REST api-version pin. |
 | `0.2.5-beta.74` | `2.0.0-beta.74`  | `>=4.0.0-rc.110 \|\| >=4.0.0` | Previous beta; refreshed non-Cosmos Azure SDK dependencies. |
 | `0.2.4-beta.74` | `2.0.0-beta.74`  | `>=4.0.0-rc.110 \|\| >=4.0.0` | Previous beta; refreshed Alchemy and Effect compatibility. |
 | `0.2.3-beta.63` | `2.0.0-beta.63`  | `>=4.0.0-beta.97 \|\| >=4.0.0` | Repository rename docs and upstream star CTA. |
@@ -23,17 +24,50 @@ This package follows Alchemy's official custom-provider model: resources are dec
 | `0.1.0-beta.57` | `2.0.0-beta.57`  | `>=4.0.0-beta.84 \|\| >=4.0.0` | Initial beta.57 compatibility release. |
 | `0.1.0-beta.35` | `2.0.0-beta.35`  | `>=4.0.0-beta.60` | Initial public beta. |
 
-The `alchemy` peer dependency is exact-pinned to a specific beta because the v2 API is still evolving. The `effect` peer accepts the tested beta line or stable Effect 4. Bump compatibility docs and release metadata together when the tested Alchemy beta changes.
+The `alchemy` peer dependency is exact-pinned to a specific beta because the v2 API is still evolving. Beta.80 is the clean native target: it does not provide legacy compatibility fallbacks. Bump compatibility docs and release metadata together when the tested Alchemy beta changes.
 
 ## Install
 
 ```sh
-bun add alchemy@2.0.0-beta.74 effect@4.0.0-rc.112 @bjorntech/alchemy-azure@0.2.6-beta.74
+bun add alchemy@2.0.0-beta.80 effect@4.0.0 @effect/platform-bun@4.0.0 @effect/platform-node@4.0.0 @effect/platform-node-shared@4.0.0 @bjorntech/alchemy-azure@0.2.7-beta.80
 ```
 
 `alchemy` and `effect` are peer dependencies — install them in your app, not just transitively.
 
 `@bjorntech/alchemy-azure` ships raw TypeScript (matching the upstream `alchemy` package) and uses `.ts` import suffixes internally. Your `tsconfig.json` needs `"moduleResolution": "Bundler"` (or `"NodeNext"`) and `"allowImportingTsExtensions": true`. This is the default for Bun, Vite, and tsx; plain `tsc`-without-bundler users will need to set it explicitly.
+
+### Beta.80 migration
+
+Beta.80 uses Alchemy's named profile flow and beta.80 auth schemas. Configure
+Azure credentials through the profile store, then select the profile with
+`--profile <name>` or `ALCHEMY_PROFILE`:
+
+```sh
+bun alchemy profile show --profile default
+bun alchemy profile edit --profile default --reconfigure Azure
+bun alchemy profile create <name>
+bun alchemy profile edit --profile <name> --add Azure
+```
+
+Existing stored Azure credentials may require explicit reconfiguration. Do not
+expect an older login payload or an unnamed login flow to migrate implicitly.
+The Azure provider uses beta.80's `Interaction` and `ProfileStore` services and
+schema-backed auth configuration. Provider service values are deferred effects,
+so custom integrations must retrieve the service effect and then its value:
+
+```ts
+const credentials = yield* (yield* AzureCredentials);
+const clients = yield* (yield* AzureClients);
+```
+
+This is a breaking integration change for direct service consumers. Update
+custom layers and integrations rather than adding a legacy fallback. The
+`AZURE_*` environment contract remains unchanged, and CI continues to use
+non-interactive environment credentials.
+
+Beta.80 changes the implicit stage for a bare deploy from `dev_$USER` to
+`live_$USER`. Preserve an existing stage explicitly with `--stage <name>` or
+`ALCHEMY_STAGE=<name>`; the old `STAGE` variable is not read.
 
 ## Alignment with Alchemy v2 principles
 
@@ -68,7 +102,12 @@ If only `AZURE_SUBSCRIPTION_ID` is set, Azure SDK `DefaultAzureCredential` is us
 
 ### `stored`
 
-Run `alchemy login` and select **Service Principal or Subscription** to walk through an interactive flow that stores credentials under `~/.alchemy/credentials/{profile}/azure-stored.json`. You can store either a Service Principal (tenant + client + secret) or just a subscription id when relying on `DefaultAzureCredential`.
+Run `alchemy profile edit --profile <name> --add Azure` to walk through the
+interactive flow that stores credentials under
+`~/.alchemy/credentials/{profile}/azure-stored.json`. You can store either a
+Service Principal (tenant + client + secret) or just a subscription id when
+relying on `DefaultAzureCredential`. Select the profile with `--profile` or
+`ALCHEMY_PROFILE`.
 
 CI environments always default to `env` regardless of profile config, so unattended runs work as long as the environment variables are set.
 

@@ -31,6 +31,32 @@ test/
   *.test.ts                     ← Bun test suites
 ```
 
+## Compatibility and beta.80 migration
+
+The package release `0.2.7-beta.80` targets `alchemy@2.0.0-beta.80` and
+Effect `4.0.0`; the public Effect peer range is `^4.0.0`. Development uses
+Bun `1.4.2`, TypeScript `7.0.2`, oxfmt `0.66.0`, and matching
+`@effect/platform-*` `4.0.0` packages. The package version intentionally uses
+`0.2.7-beta.80`: it is the next patch release after `0.2.6-beta.74`, while the
+beta suffix tracks the tested Alchemy beta.
+
+This is a clean beta.80-native migration. Auth configuration is schema-backed
+and participates in beta.80's `Interaction` and `ProfileStore` services.
+Named profiles are selected with `--profile` or `ALCHEMY_PROFILE`, and existing
+stored Azure credentials may need `alchemy profile edit --profile <name>
+--reconfigure Azure`. Do not add a legacy auth or service compatibility shim.
+
+Alchemy service values are deferred effects in beta.80. `AzureCredentials` and
+`AzureClients` therefore require nested service access in direct integrations:
+`yield* (yield* AzureCredentials)` and `yield* (yield* AzureClients)`. The
+provider layer owns the profile-store and interaction wiring; resource
+lifecycles should consume the resolved services and should not construct a
+second auth flow.
+
+The implicit stage for a bare deploy is now `live_$USER`, not `dev_$USER`.
+Callers preserving an existing stage must pass `--stage` or set
+`ALCHEMY_STAGE`; `STAGE` is not a supported fallback.
+
 ## How a resource is wired
 
 Every resource follows the same five-step contract from [v2.alchemy.run/concepts/provider](https://v2.alchemy.run/concepts/provider):

@@ -16,7 +16,6 @@ import { StorageManagementClient } from "@azure/arm-storage";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { ServiceClientCredentials } from "@azure/ms-rest-js";
 import { AzureCredentials } from "./Credentials.ts";
 
 const COSMOS_DB_API_VERSION = "2024-05-15";
@@ -91,7 +90,7 @@ export const buildAzureClients = (credentials: {
 export const AzureClientsLive = Layer.effect(
   AzureClients,
   Effect.gen(function* () {
-    const credentials = yield* AzureCredentials;
+    const credentials = yield* yield* AzureCredentials;
     const tenantId = credentials.tenantId ?? (yield* resolveTenantId(credentials.credential));
     return buildAzureClients({ ...credentials, tenantId });
   }),
@@ -103,7 +102,9 @@ const resolveTenantId = (credential: TokenCredential) =>
     if (!token) return undefined;
     const [, payload] = token.token.split(".");
     if (!payload) return undefined;
-    const decoded = JSON.parse(Buffer.from(base64UrlToBase64(payload), "base64").toString("utf8")) as {
+    const decoded = JSON.parse(
+      Buffer.from(base64UrlToBase64(payload), "base64").toString("utf8"),
+    ) as {
       tid?: string;
     };
     return decoded.tid;
@@ -112,21 +113,4 @@ const resolveTenantId = (credential: TokenCredential) =>
 function base64UrlToBase64(value: string) {
   const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
   return base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
-}
-
-/**
- * @deprecated Use direct `TokenCredential` auth through {@link buildAzureClients} instead.
- * This compatibility shim remains for existing consumers and will be removed in a future major release.
- */
-export function toServiceClientCredentials(credential: TokenCredential): ServiceClientCredentials {
-  return {
-    signRequest: async (webResource) => {
-      const token = await credential.getToken("https://management.azure.com/.default");
-      if (!token) {
-        throw new Error("Failed to acquire Azure management token");
-      }
-      webResource.headers.set("Authorization", `Bearer ${token.token}`);
-      return webResource;
-    },
-  };
 }

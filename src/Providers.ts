@@ -1,6 +1,6 @@
 import * as Layer from "effect/Layer";
 import { CredentialsStoreLive } from "alchemy/Auth/Credentials";
-import { ProfileLive } from "alchemy/Auth/Profile";
+import { ProfileStoreLive } from "alchemy/Auth/Profile";
 import * as Provider from "alchemy/Provider";
 import { AzureAuth } from "./AuthProvider.ts";
 import { AzureClientsLive } from "./Clients.ts";
@@ -121,7 +121,7 @@ export const providers = () =>
     Layer.provide(AzureOperationLockLive),
     Layer.provideMerge(Credentials.fromAuthProvider()),
     Layer.provideMerge(AzureAuth),
-    Layer.provideMerge(ProfileLive),
+    Layer.provideMerge(ProfileStoreLive),
     Layer.provideMerge(CredentialsStoreLive),
     Layer.orDie,
   );

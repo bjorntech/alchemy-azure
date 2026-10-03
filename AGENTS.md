@@ -17,8 +17,11 @@ The package should keep a flat Alchemy v2 provider layout and avoid nested provi
 ## Dependency Policy
 
 - Keep `alchemy`, `effect`, `package.json` version, README compatibility table, and `CHANGELOG.md` aligned.
-- The package beta suffix follows the tested Alchemy beta line, for example `0.2.6-beta.74` with `alchemy@2.0.0-beta.74`.
+- The package beta suffix follows the tested Alchemy beta line, for example `0.2.7-beta.80` with `alchemy@2.0.0-beta.80`.
 - Do not bump dependency pins independently from release metadata.
+- The beta.80 target is `alchemy@2.0.0-beta.80` with `effect@4.0.0`, matching `@effect/platform-bun`, `@effect/platform-node`, and `@effect/platform-node-shared` pins, and public peer range `effect: ^4.0.0`.
+- Development uses Bun `1.4.2`, TypeScript `7.0.2`, and oxfmt `0.66.0`; keep these pins explicit and aligned with release metadata.
+- Beta.80 is native-only: use its schema-backed auth, `Interaction`, `ProfileStore`, named profiles, and deferred service access. Do not reintroduce legacy compatibility shims.
 
 ## Architecture Rules
 
